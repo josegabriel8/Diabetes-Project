@@ -239,6 +239,15 @@ quantile(diadata$los,probs=0.8)
 diadata$los8<-0
 diadata$los8<-ifelse(diadata$los>=8,1,diadata$los8)
 
+#Create a variable for amputations (this codes did noot work)
+
+diadata$ampt<-0
+diadata$ampt <- ifelse(diadata$procedure==6 | diadata$procedure==26| 
+                       diadata$procedure==112| 
+                       diadata$procedure==294, 1, diadata$ampt)
+
+
+
 # Re-encode risk and severity of illness.
 
 #ny_risks:  # Extreme=2, Major=3, Minor=4, Moderate=5 (the natural order: 0 -> Minor, 1 -> Moderate, 2 -> Major and 3 -> Extreme)
@@ -249,8 +258,16 @@ diadata$risky<-ifelse(diadata$risk=="5",1,diadata$risky)
 diadata$risky<-ifelse(diadata$risk=="3",2,diadata$risky)
 diadata$risky<-ifelse(diadata$risk=="2",3,diadata$risky)
 
+#dummy variables for risk
+diadata$extreme_risk <- as.numeric(diadata$risk == 2)
+diadata$major_risk <- as.numeric(diadata$risk == 3)
+diadata$minor_risk <- as.numeric(diadata$risk == 4)
+diadata$moderate_risk <- as.numeric(diadata$risk == 5)
+
 
 #ny_severities:  # Extreme=2, Major=3, Minor=4, Moderate=5 
+
+
 
 diadata$severe<-NA
 diadata$severe<-ifelse(diadata$severity=="4",0,diadata$severe)# <= the order is inverted
@@ -258,6 +275,21 @@ diadata$severe<-ifelse(diadata$severity=="5",1,diadata$severe)
 diadata$severe<-ifelse(diadata$severity=="3",2,diadata$severe)
 diadata$severe<-ifelse(diadata$severity=="2",3,diadata$severe)
 
+ny_severities
+ny_risks
+#dummy variables for severity
+diadata$extreme_severity <- as.numeric(diadata$severity == 2)
+diadata$major_severity <- as.numeric(diadata$severity == 3)
+diadata$minor_severity <- as.numeric(diadata$severity == 4)
+diadata$moderate_severity <- as.numeric(diadata$severity == 5)
+
+ny_age
+#dummy variables for age
+diadata$age70ormore <- as.numeric(diadata$cl_age == 4)
+diadata$fiftyto69 <- as.numeric(diadata$cl_age == 5)
+
+
+diadata$
 
 # Save the subset
 
@@ -285,7 +317,7 @@ names(m_dia)<-c("year2021","ny_hosp_id","cr")
 names(m_dia_nrow)<-c("year2021","ny_hosp_id","n")               
 m_dia<-merge(m_dia,m_dia_nrow,by=c("ny_hosp_id","year2021"))    # Merge data matching data frames by the id of the hospitals found in both data frames
 m_dia$cr<-m_dia$cr*100                               # los8 rates*100
-               
+
 # Aggregate the deaths by ny areas
 m_dia_area<-aggregate(diadata$los8,by=list(diadata$year2021,diadata$ny_area),FUN="mean")      # los8 rates, grouped by NY area 
 names(m_dia_area)<-c("year2021","ny_area","los8_rate")                                 
@@ -310,3 +342,78 @@ oddsratio(diadata$males,diadata$los8)  #OR=1.12
 oddsratio(diadata$white,diadata$los8)  #OR=1.07
 riskratio(diadata$year2021,diadata$los8)  #OR=1.03
 riskratio(diadata$compl,diadata$los8)  #OR=4.58
+
+ny_age
+##############numero de ny_procs for amputations 6,26, 112,294
+
+#variables for the model: 
+#age, sex, ampt, risk, severity, compl, white,cost, county
+
+
+
+####################################################################################
+#logistic GLM and GEE models (we have to make gee model)
+#note, the variable for amputations did not work because there are no amputations on the datasets
+logit_model<-glm(los8~age70ormore+fiftyto69+males+white+ny_area+cost+
+                   extreme_risk+major_risk+moderate_risk+extreme_severity+major_severity+moderate_severity+compl,
+                 family = binomial("logit"),data=diadata)
+
+#wee need to apply backward selecttion 
+
+
+
+summary(logit_model)
+###################################
+#summary table for demografics age, sex race
+library(dplyr)
+
+
+tabledemografic1<-diadata %>% 
+  mutate(value = ny_age[cl_age]) %>% 
+  group_by(value) %>% 
+  summarise(characteristic="age", Patients = n(), Average_lenghofstay=mean(los), min=min(los), max=max(los),deaths=sum(dead))
+
+tabledemografic2<-diadata %>% 
+  mutate(value = if_else(diadata$male==1,"male","female")) %>% 
+  group_by(value) %>% 
+  summarise(characteristic="sex",  Patients = n(), Average_lenghofstay=mean(los), min=min(los), max=max(los),deaths=sum(dead))
+
+tabledemografic3<-diadata %>% 
+  mutate(value = ny_races[diadata$race]) %>% 
+  group_by(value) %>% 
+  summarise(characteristic="race",  Patients = n(), Average_lenghofstay=mean(los), min=min(los), max=max(los),deaths=sum(dead))
+
+
+
+#summary table for Admission/Hospital characteristics severity, county, compl
+
+tabledemografic4<-diadata %>% 
+  mutate(value = ny_severities[severity]) %>% 
+  group_by(value) %>% 
+  summarise(characteristic="severity", Patients = n(), Average_lenghofstay=mean(los), min=min(los), max=max(los),deaths=sum(dead))
+
+tabledemografic5<-diadata %>% 
+  mutate(value = ny_areas[diadata$ny_area]) %>% 
+  group_by(value) %>% 
+  summarise(characteristic="area",  Patients = n(), Average_lenghofstay=mean(los), min=min(los), max=max(los),deaths=sum(dead))
+
+tabledemografic6<-diadata %>% 
+  mutate(value = if_else(compl==1,"With Complications",
+                                 "Without Complications")) %>% 
+  group_by(value) %>% 
+  summarise(characteristic="Diabetes complications", Patients = n(), Average_lenghofstay=mean(los), min=min(los), max=max(los),deaths=sum(dead))
+
+
+
+diadata$procesos <- ny_procs[diadata$procedure]
+
+unique(diadata$procesos)
+
+#summary for demog
+demog_car<-rbind(tabledemografic1,tabledemografic2,tabledemografic3)
+
+#summary for hospital
+Hospital_car<-rbind(tabledemografic4,tabledemografic5,tabledemografic6)
+
+write.csv(demog_car,"demog_car.csv")
+write.csv(demog_car,"hospital_car.csv")
