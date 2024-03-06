@@ -358,11 +358,16 @@ logit_model<-glm(los8~age70ormore+fiftyto69+males+white+ny_area+cost+
                    extreme_risk+major_risk+moderate_risk+extreme_severity+major_severity+moderate_severity+compl,
                  family = binomial("logit"),data=diadata)
 
-#wee need to apply backward selecttion 
-
-
 
 summary(logit_model)
+#wee need to apply backward selecttion 
+library(MASS)
+backward_model <- stepAIC(logit_model, direction = "backward")
+
+summary(backward_model)
+
+#GEEmodel????
+
 ###################################
 #summary table for demografics age, sex race
 library(dplyr)
