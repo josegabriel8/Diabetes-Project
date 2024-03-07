@@ -239,13 +239,16 @@ quantile(diadata$los,probs=0.8)
 diadata$los8<-0
 diadata$los8<-ifelse(diadata$los>=8,1,diadata$los8)
 
-#Create a variable for amputations (this codes did noot work)
+#Create a variable for amputations (now it should work)
 
 diadata$ampt<-0
 diadata$ampt <- ifelse(diadata$procedure==5 | diadata$procedure==26| 
                        diadata$procedure==114| 
                        diadata$procedure==300, 1, diadata$ampt)
-
+#5:"ABOVE KNEE AND OTHER PROXIMAL LOWER EXTREMITY AMPUTATION"
+#26:"BELOW KNEE AMPUTATION"
+#114:"FINGER AND OTHER UPPER EXTREMITY AMPUTATION"  
+#300: "TOE AND MID FOOT AMPUTATION" 
 
 
 # Re-encode risk and severity of illness.
