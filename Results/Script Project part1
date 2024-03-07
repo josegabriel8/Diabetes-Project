@@ -335,16 +335,19 @@ chisq.test(diadata$males,diadata$los8, correct=FALSE)   #highly significant
 chisq.test(diadata$white,diadata$los8, correct=FALSE)   #highly significant
 chisq.test(diadata$year2021,diadata$los8, correct=FALSE) #significant
 chisq.test(diadata$compl,diadata$los8, correct=FALSE)   #highly significant
+chisq.test(diadata$ampt,diadata$los8, correct=FALSE)    #highly significant
 
 CrossTable(diadata$males,diadata$los8)
 CrossTable(diadata$white,diadata$los8)
 CrossTable(diadata$year2021,diadata$los8)
 CrossTable(diadata$compl,diadata$los8)
+CrossTable(diadata$ampt,diadata$los8)
 
 oddsratio(diadata$males,diadata$los8)  #OR=1.12
 oddsratio(diadata$white,diadata$los8)  #OR=1.07
-riskratio(diadata$year2021,diadata$los8)  #OR=1.03
-riskratio(diadata$compl,diadata$los8)  #OR=4.58
+oddsratio(diadata$year2021,diadata$los8)  #OR=1.03
+oddsratio(diadata$compl,diadata$los8)  #OR=5.58
+oddsratio(diadata$ampt,diadata$los8)   #OR=5.77
 
 ny_age
 ##############numero de ny_procs for amputations 6,26, 112,294
