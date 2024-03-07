@@ -350,15 +350,15 @@ ny_age
 ##############numero de ny_procs for amputations 6,26, 112,294
 
 #variables for the model: 
-#age, sex, ampt, risk, severity, compl, white,cost, county
+#age, sex, ampt, risk, severity, compl, white,cost, county,ampt
 
 
 
 ####################################################################################
 #logistic GLM and GEE models (we have to make gee model)
-#note, the variable for amputations did not work because there are no amputations on the datasets
+
 logit_model<-glm(los8~age70ormore+fiftyto69+males+white+ny_area+cost+
-                   extreme_risk+major_risk+moderate_risk+extreme_severity+major_severity+moderate_severity+compl,
+                   extreme_risk+major_risk+moderate_risk+extreme_severity+major_severity+moderate_severity+compl+ampt,
                  family = binomial("logit"),data=diadata)
 
 
