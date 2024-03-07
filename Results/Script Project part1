@@ -242,9 +242,9 @@ diadata$los8<-ifelse(diadata$los>=8,1,diadata$los8)
 #Create a variable for amputations (this codes did noot work)
 
 diadata$ampt<-0
-diadata$ampt <- ifelse(diadata$procedure==6 | diadata$procedure==26| 
-                       diadata$procedure==112| 
-                       diadata$procedure==294, 1, diadata$ampt)
+diadata$ampt <- ifelse(diadata$procedure==5 | diadata$procedure==26| 
+                       diadata$procedure==114| 
+                       diadata$procedure==300, 1, diadata$ampt)
 
 
 
