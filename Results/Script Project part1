@@ -414,6 +414,11 @@ tabledemografic6<-diadata %>%
   group_by(value) %>% 
   summarise(characteristic="Diabetes complications", Patients = n(), Average_lenghofstay=mean(los), min=min(los), max=max(los),deaths=sum(dead))
 
+tabledemografic7<-diadata %>% 
+  mutate(value = if_else(diadata$year2021==1,"2021","2019")) %>% 
+  group_by(value) %>% 
+  summarise(characteristic="Year",  Patients = n(), Average_lenghofstay=mean(los), min=min(los), max=max(los),deaths=sum(dead),amputations=sum(ampt),los8=sum(los8))
+
 
 
 diadata$procesos <- ny_procs[diadata$procedure]
