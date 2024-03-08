@@ -360,10 +360,24 @@ ny_age
 ####################################################################################
 #logistic GLM and GEE models (we have to make gee model)
 
+
+diadata$d_severe<-0
+diadata$d_severe<-ifelse(diadata$severe>=2,1,diadata$d_severe)
+diadata$d_severe<-ifelse(is.na(diadata$severe)==TRUE,NA,diadata$d_severe)
+diadata$d_risky<-0
+diadata$d_risky<-ifelse(diadata$d_risky>=2,1,diadata$d_risky)
+diadata$d_risky<-ifelse(is.na(diadata$risky)==TRUE,NA,diadata$d_risky)
+
+diadata$los30<-0
+diadata$los30<-ifelse(diadata$los>=30,1,diadata$los8)
+
+
+
 logit_model<-glm(los8~age70ormore+fiftyto69+males+white+ny_area+cost+
                    extreme_risk+major_risk+moderate_risk+extreme_severity+major_severity+moderate_severity+compl+ampt,
                  family = binomial("logit"),data=diadata)
-
+logit_model2<-glm(los8~d_severe,
+                 family = binomial("logit"),data=diadata)
 
 summary(logit_model)
 #wee need to apply backward selecttion 
@@ -374,7 +388,109 @@ summary(backward_model)
 
 #GEEmodel????
 
+
+
+
 ###################################
+#####################ROC analysis################################
+diadata$p<- predict(logit_model2,newdata=diadata,type="response")
+library(ROCR)
+pr <- prediction(diadata[!is.na(diadata$p),c("p")],
+                 diadata[!is.na(diadata$p),c("los8")]) 
+
+prf <- performance(pr, measure = "tpr", x.measure = "fpr") 
+plot(prf) 
+abline(a=0, b= 1) 
+title("ROC Curve Reduced Model") 
+
+
+auc <- performance(pr, measure = "auc")
+message(paste(("AUC REDUCED:"),auc@y.values[[1]]))
+
+#to compare both models
+diadata$p2<- predict(logit_model,newdata=diadata,type="response")
+
+pr2 <- prediction(diadata[!is.na(diadata$p2),c("p2")],
+                  diadata[!is.na(diadata$p),c("los8")])
+
+prf2 <- performance(pr2, measure = "tpr", x.measure = "fpr")
+plot(prf2)
+abline(a=0, b= 1)
+title("ROC Curve Full Model")
+
+auc2<- performance(pr2, measure = "auc")
+message(paste(("AUC FULL:"),auc2@y.values[[1]]))
+
+plot(prf, col="red", lwd = 2)
+plot(prf2, col="green", add=T)
+legend(0.4,0.4,c('Reduced model','Full Model'),lty=c(1,1),lwd=c(1,1),
+       col=c('red', 'green'), cex = 1.3,bty = "n")
+abline(a=0, b= 1)
+title("Roc curves")
+
+###for the cut point
+library(cutpointr)
+optimal_cut_1<-cutpointr(data=diadata,x=p,class=dead,na.rm=TRUE,
+                         method=maximize_metric,metric=youden,use_midpoint=TRUE)
+optimal_cut_1$optimal_cutpoint
+summary(optimal_cut_1)
+
+diadata$d_score_1<-ifelse(diadata$p>=optimal_cut_1$optimal_cutpoint,1,0)
+diadata$d_score_1<-ifelse(is.na(diadata$p),NA,diadata$d_score_1)
+
+library(pROC)
+library(ROCit)
+pROC_1<- pROC::plot.roc(diadata$dead,diadata$p,
+                        main="Confidence interval of a threshold", percent=T,
+                        ci=TRUE, of="thresholds", 
+                        thresholds="best", 
+                        print.thres=optimal_cut_1$optimal_cutpoint,
+                        print.thres.col="red")
+ci_auc_1<-ciAUC(rocit(score=diadata$p,diadata$los8))
+############to compare again
+
+optimal_cut_2<-cutpointr(data=diadata,x=p2,class=dead,na.rm=TRUE,
+                         method=maximize_metric,metric=youden,use_midpoint=TRUE)
+summary(optimal_cut_2)
+diadata$d_score_2<-ifelse(diadata$p>=optimal_cut_2$optimal_cutpoint,1,0)
+diadata$d_score_2<-ifelse(is.na(diadata$p2),NA,diadata$d_score_2)
+pROC_2<- pROC::plot.roc(diadata$dead,diadata$p2,
+                        main="Confidence interval of a threshold", percent=T,
+                        ci=TRUE, of="thresholds",
+                        thresholds="best",
+                        print.thres=optimal_cut_2$optimal_cutpoint,
+                        print.thres.col="red")
+ci_auc_2<-ciAUC(rocit(score=diadata$p2,diadata$los8))
+
+plot(pROC_1,col="red",lty=2)
+text(round(optimal_cut_1$specificity*100,1)-10,round(optimal_cut_1$sensitivity*100,1)-
+       2,
+     paste(round(optimal_cut_1$optimal_cutpoint,4),"
+(",round(optimal_cut_1$specificity*100,1),
+           ",",round(optimal_cut_1$sensitivity*100,1),")",sep=""),cex=0.65,col="red")
+
+plot(pROC_2,type="shape",col="blue",lty=3,add=TRUE)
+text(round(optimal_cut_2$specificity*100,1)-8,round(optimal_cut_2$sensitivity*100,1)-
+       2,
+     paste(round(optimal_cut_2$optimal_cutpoint,4),"
+(",round(optimal_cut_2$specificity*100,1),
+           ",",round(optimal_cut_2$sensitivity*100,1),")",sep=""),cex=0.65,col="blue")
+
+legend("bottomright", legend = c(
+  paste("Score pROC_1 AUC: ",format(round(ci_auc_1$AUC*100,1),nsmall=1),
+        " (",round(ci_auc_1$lower*100,1),"-",round(ci_auc_1$upper*100,1),")",sep=""),
+  paste("Score pROC_2 AUC: ",format(round(ci_auc_2$AUC*100,1),nsmall=1),
+        " (",round(ci_auc_2$lower*100,1),"-",round(ci_auc_2$upper*100,1),")",sep="")
+), inset=c(.02,.04),col = c("red","blue"),lty=c(2,3),lwd=c(2,2))
+
+
+
+################Model validation############
+
+
+#??
+
+#################################
 #summary table for demografics age, sex race
 library(dplyr)
 
