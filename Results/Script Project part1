@@ -469,7 +469,7 @@ legend("bottomright", legend = c(
 
 library(geepack)
 modgee<-geeglm(los8~year2021+white+ny_area+
-                 d_risky+d_severe+compl+ampt+males+cl_age,data=diadata,id=ny_area,family=binomial("logit"),corstr="exchangeable")
+                 d_risky+d_severe+compl+ampt+males+cl_age,data=diadata,id=ny_hosp_id,family=binomial("logit"),corstr="exchangeable")
 summary(modgee)
 names(modgee)
 
