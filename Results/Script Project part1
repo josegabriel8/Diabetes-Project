@@ -261,16 +261,13 @@ diadata$risky<-ifelse(diadata$risk=="5",1,diadata$risky)
 diadata$risky<-ifelse(diadata$risk=="3",2,diadata$risky)
 diadata$risky<-ifelse(diadata$risk=="2",3,diadata$risky)
 
-#dummy variables for risk
-diadata$extreme_risk <- as.numeric(diadata$risk == 2)
-diadata$major_risk <- as.numeric(diadata$risk == 3)
-diadata$minor_risk <- as.numeric(diadata$risk == 4)
-diadata$moderate_risk <- as.numeric(diadata$risk == 5)
+#dummy variable for risk
+diadata$d_risky<-0
+diadata$d_risky<-ifelse(diadata$risky>=2,1,diadata$d_risky)
+diadata$d_risky<-ifelse(is.na(diadata$risky)==TRUE,NA,diadata$d_risky)
 
 
 #ny_severities:  # Extreme=2, Major=3, Minor=4, Moderate=5 
-
-
 
 diadata$severe<-NA
 diadata$severe<-ifelse(diadata$severity=="4",0,diadata$severe)# <= the order is inverted
@@ -280,11 +277,10 @@ diadata$severe<-ifelse(diadata$severity=="2",3,diadata$severe)
 
 ny_severities
 ny_risks
-#dummy variables for severity
-diadata$extreme_severity <- as.numeric(diadata$severity == 2)
-diadata$major_severity <- as.numeric(diadata$severity == 3)
-diadata$minor_severity <- as.numeric(diadata$severity == 4)
-diadata$moderate_severity <- as.numeric(diadata$severity == 5)
+#dummy variable for severity
+diadata$d_severe<-0
+diadata$d_severe<-ifelse(diadata$severe>=2,1,diadata$d_severe)
+diadata$d_severe<-ifelse(is.na(diadata$severe)==TRUE,NA,diadata$d_severe)
 
 ny_age
 #dummy variables for age
@@ -360,36 +356,21 @@ ny_age
 ####################################################################################
 #logistic GLM and GEE models (we have to make gee model)
 
-
-diadata$d_severe<-0
-diadata$d_severe<-ifelse(diadata$severe>=2,1,diadata$d_severe)
-diadata$d_severe<-ifelse(is.na(diadata$severe)==TRUE,NA,diadata$d_severe)
-diadata$d_risky<-0
-diadata$d_risky<-ifelse(diadata$d_risky>=2,1,diadata$d_risky)
-diadata$d_risky<-ifelse(is.na(diadata$risky)==TRUE,NA,diadata$d_risky)
-
 diadata$los30<-0
-diadata$los30<-ifelse(diadata$los>=30,1,diadata$los8)
-
-
+diadata$los30<-ifelse(diadata$los>=30,1,diadata$los30)
 
 logit_model<-glm(los8~age70ormore+fiftyto69+males+white+ny_area+cost+
-                   extreme_risk+major_risk+moderate_risk+extreme_severity+major_severity+moderate_severity+compl+ampt,
+                   d_risky+d_severe+compl+ampt,
                  family = binomial("logit"),data=diadata)
 logit_model2<-glm(los8~d_severe,
                  family = binomial("logit"),data=diadata)
 
 summary(logit_model)
+
 #wee need to apply backward selecttion 
 library(MASS)
 backward_model <- stepAIC(logit_model, direction = "backward")
-
 summary(backward_model)
-
-#GEEmodel????
-
-
-
 
 ###################################
 #####################ROC analysis################################
@@ -484,6 +465,26 @@ legend("bottomright", legend = c(
 ), inset=c(.02,.04),col = c("red","blue"),lty=c(2,3),lwd=c(2,2))
 
 
+################  GEE MODEL ###########################
+
+library(geepack)
+modgee<-geeglm(los8~year2021+white+ny_area+
+                 d_risky+d_severe+compl+ampt+males+cl_age,data=diadata,id=ny_area,family=binomial("logit"),corstr="exchangeable")
+summary(modgee)
+names(modgee)
+
+confint.geeglm <- function(object, parm, level = 0.95, ...) {
+  cc <- coef(summary(object))
+  mult <- qnorm((1+level)/2)
+  citab <- with(as.data.frame(cc),
+                cbind(Lower=Estimate-mult*Std.err,
+                      Upper=Estimate+mult*Std.err))
+  rownames(citab) <- rownames(cc)
+  citab[parm,]
+}
+
+cbind(coef(summary(modgee)),confint.geeglm(modgee))
+cbind(coef(summary(backward_model)),confint(backward_model))   #to make a comparison
 
 ################Model validation############
 
