@@ -1,4 +1,4 @@
-#CREATION OF DIADATA DATASET, QUICK ANALYSIS AND BIVARIATE ANALYSIS
+########### CREATION OF DIADATA DATASET, QUICK ANALYSIS AND BIVARIATE ANALYSIS ######################
 
 #SCRIPT PROJECT
 #Group Blue: Niccolò Caselli, Josè Escarramàn, Cristian Perrone
@@ -287,9 +287,6 @@ ny_age
 diadata$age70ormore <- as.numeric(diadata$cl_age == 4)
 diadata$fiftyto69 <- as.numeric(diadata$cl_age == 5)
 
-
-diadata$
-
 # Save the subset
 
 save(diadata,file="diadata.Rda")
@@ -354,7 +351,7 @@ ny_age
 
 
 ####################################################################################
-#logistic GLM and GEE models (we have to make gee model)
+###################### logistic GLM and GEE models #####################
 
 diadata$los30<-0
 diadata$los30<-ifelse(diadata$los>=30,1,diadata$los30)
@@ -373,7 +370,7 @@ backward_model <- stepAIC(logit_model, direction = "backward")
 summary(backward_model)
 
 ###################################
-#####################ROC analysis################################
+##################### ROC ANALYSIS ################################
 diadata$p<- predict(logit_model2,newdata=diadata,type="response")
 library(ROCR)
 pr <- prediction(diadata[!is.na(diadata$p),c("p")],
@@ -464,9 +461,16 @@ legend("bottomright", legend = c(
         " (",round(ci_auc_2$lower*100,1),"-",round(ci_auc_2$upper*100,1),")",sep="")
 ), inset=c(.02,.04),col = c("red","blue"),lty=c(2,3),lwd=c(2,2))
 
+############## MODEL VALIDATION #######################
+
+
+
+############# CROSS VALIDATION ########################
+
+
 
 ################  GEE MODEL ###########################
-
+#some problems if we cluster for year (R crashes)
 library(geepack)
 modgee<-geeglm(los8~year2021+white+ny_area+
                  d_risky+d_severe+compl+ampt+males+cl_age,data=diadata,id=ny_hosp_id,family=binomial("logit"),corstr="exchangeable")
@@ -486,10 +490,6 @@ confint.geeglm <- function(object, parm, level = 0.95, ...) {
 cbind(coef(summary(modgee)),confint.geeglm(modgee))
 cbind(coef(summary(backward_model)),confint(backward_model))   #to make a comparison
 
-################Model validation############
-
-
-#??
 
 #################################
 #summary table for demografics age, sex race
