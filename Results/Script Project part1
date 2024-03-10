@@ -286,6 +286,9 @@ ny_age
 #dummy variables for age
 diadata$age70ormore <- as.numeric(diadata$cl_age == 4)
 diadata$fiftyto69 <- as.numeric(diadata$cl_age == 5)
+diadata$more_than49<-0
+diadata$more_than49<-ifelse(diadata$cl_age>3,1,diadata$more_than49)
+diadata$more_than49<-ifelse(is.na(diadata$cl_age)==TRUE,NA,diadata$more_than49)
 
 # Save the subset
 
@@ -341,7 +344,11 @@ oddsratio(diadata$white,diadata$los8)  #OR=1.07
 oddsratio(diadata$year2021,diadata$los8)  #OR=1.03
 oddsratio(diadata$compl,diadata$los8)  #OR=5.58
 oddsratio(diadata$ampt,diadata$los8)   #OR=5.77
-
+oddsratio(diadata$d_severe,diadata$los8)  #OR=5.33
+oddsratio(diadata$d_risky,diadata$los8)  #OR=3.49
+oddsratio(diadata$dead,diadata$los8)    #OR=5.29
+oddsratio(diadata$surgical,diadata$los8) #OR=6.43
+oddsratio(diadata$more_than49,diadata$los8) #OR=5.16
 ny_age
 ##############numero de ny_procs for amputations 6,26, 112,294
 
