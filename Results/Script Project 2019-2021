@@ -1,0 +1,735 @@
+########### CREATION OF DIADATA DATASET, QUICK ANALYSIS AND BIVARIATE ANALYSIS ######################
+
+#SCRIPT PROJECT
+#Group Blue: Niccolò Caselli, José Escarramàn, Cristian Perrone
+
+setwd("C:/Users/cripe/OneDrive/Desktop/Methods and Tools - Carinci")
+library(gmodels)
+library(epitools)
+
+#INITIAL DATASET
+hospdata19<-read.csv("Hospital_Inpatient_Discharges__SPARCS_De-Identified___2019.csv",stringsAsFactors = F,header=T,sep=",")
+hospdata21<-read.csv("Hospital_Inpatient_Discharges__SPARCS_De-Identified___2021.csv",stringsAsFactors = F,header=T,sep=",")
+colnames(hospdata19)==colnames(hospdata21)
+hospdata=rbind.data.frame(hospdata19,hospdata21)
+write.csv(hospdata,"hospdata1921.csv")
+
+#Creating a function for dataset reduction
+create_hospdata<- function(input,output,value_labels="value_labels.txt") {
+  
+  hospdata <- read.csv(file=input,stringsAsFactors = F,header=T,sep=",")
+  
+  print(names(hospdata))
+  
+  #Creates a dummy variable for 2021 discharge year
+  hospdata$year2021<-0
+  hospdata$year2021<-ifelse(hospdata$Discharge.Year==2021 & !is.na((hospdata$Discharge.Year)),1,hospdata$year2021) 
+  
+  # Creates a dummy variable for gender  
+  hospdata$males<-0                                                                         
+  hospdata$males<-ifelse(hospdata$Gender=="U",NA,hospdata$males)                            
+  hospdata$males<-ifelse(hospdata$Gender=="M" & !is.na((hospdata$Gender)),1,hospdata$males) 
+  
+  #Creates a dummy variable for race 
+  hospdata$white<-0
+  hospdata$white<-ifelse(hospdata$Race=="White" & !is.na((hospdata$Race)),1,hospdata$white) 
+  
+  ## Extract the levels of the variables
+  
+  # Assign the unique levels of the variable considering it as factor variable. 
+  
+  ny_counties<-levels(factor(hospdata$Hospital.County))    # Save the levels of the variable Hospital.County to ny_counties
+  ny_areas<-levels(factor(hospdata$Hospital.Service.Area))
+  ny_age<-levels(factor(hospdata$Age.Group))  
+  ny_adm_types<-levels(factor(hospdata$Type.of.Admission))
+  ny_races<-levels(factor(hospdata$Race))
+  ny_ethnicities<-levels(factor(hospdata$Ethnicity))
+  ny_diags<-levels(factor(hospdata$CCSR.Diagnosis.Description))
+  ny_procs<-levels(factor(hospdata$CCSR.Procedure.Description))
+  ny_dispositions<-levels(factor(hospdata$Patient.Disposition))
+  ny_severities<-levels(factor(hospdata$APR.Severity.of.Illness.Description))
+  ny_risks<-levels(factor(hospdata$APR.Risk.of.Mortality)) 
+
+  # Store the levels into the working space.
+  
+  assign("ny_counties",ny_counties,envir=.GlobalEnv)       # assign ny_counties values to ny_counties variable and store in global envoirment
+  assign("ny_areas",ny_areas,envir=.GlobalEnv)
+  assign("ny_age",ny_age,envir=.GlobalEnv)
+  assign("ny_adm_types",ny_adm_types,envir=.GlobalEnv)
+  assign("ny_races",ny_races,envir=.GlobalEnv)
+  assign("ny_ethnicities",ny_ethnicities,envir=.GlobalEnv)
+  assign("ny_diags",ny_diags,envir=.GlobalEnv)
+  assign("ny_procs",ny_procs,envir=.GlobalEnv)
+  assign("ny_dispositions",ny_dispositions,envir=.GlobalEnv)
+  assign("ny_severities",ny_severities,envir=.GlobalEnv)
+  assign("ny_risks",ny_risks,envir=.GlobalEnv)
+
+  
+  ## Transformation into numerical variables 
+  
+  # Turn the levels of a variable transformed in a factor variable in numeric entries, assigning the index number.
+  
+  hospdata$ny_hosp_id<-as.numeric(as.factor(hospdata$Facility.Name))  # generates ny_hosp_id variable in hospdata data.frame with the transformed values of Facility_Name 
+  hospdata$ny_county<-as.numeric(as.factor(hospdata$Hospital.County))
+  hospdata$ny_area<-as.numeric(as.factor(hospdata$Hospital.Service.Area))
+  hospdata$cl_age<-as.numeric(as.factor(hospdata$Age.Group))
+  hospdata$zipcode<-as.numeric(as.factor(hospdata$Zip.Code...3.digits))
+  hospdata$adm_type<-as.numeric(as.factor(hospdata$Type.of.Admission))
+  hospdata$race<-as.numeric(as.factor(hospdata$Race))
+  hospdata$ethnicity<-as.numeric(as.factor(hospdata$Ethnicity))
+  hospdata$los<-hospdata$Length.of.Stay                                                      # generates los variable in hospdata data.frame 
+  hospdata$disposition<-as.numeric(as.factor(hospdata$Patient.Disposition))
+  hospdata$diagnosis<-as.numeric(as.factor(hospdata$CCSR.Diagnosis.Description))
+  hospdata$procedure<-as.numeric(as.factor(hospdata$CCSR.Procedure.Description))
+  hospdata$drg<-as.numeric(as.factor(hospdata$APR.DRG.Code))
+  hospdata$mdc<-as.numeric(as.factor(hospdata$APR.MDC.Code))
+  hospdata$severity<-as.numeric(as.factor(hospdata$APR.Severity.of.Illness.Description))
+  hospdata$risk<-as.numeric(as.factor(hospdata$APR.Risk.of.Mortality))
+  hospdata$payment_type<-as.numeric(as.factor(hospdata$Payment.Typology.1))
+  hospdata$cost<-hospdata$Total.Charges
+  
+  # Dummy variable for surgical. The not available entries were recorded as Not Applicable in the original variable.
+  
+  hospdata$surgical<-0
+  hospdata$surgical<-ifelse(hospdata$APR.Medical.Surgical.Description=="Not Applicable",NA,hospdata$surgical)
+  hospdata$surgical<-ifelse(hospdata$APR.Medical.Surgical.Description=="Surgical" & !is.na((hospdata$surgical)),1,hospdata$surgical)
+  
+  # Diabetes- Diabetes Mellitus, 
+  #grep function search for matches. 
+  #Output the index number of DMC from the ny_diags stored before. 
+  
+  grep("Diabetes mellitus",ny_diags)
+  ny_diags[195]
+  ny_diags[196]
+  ny_diags[197]
+  ny_diags[198]
+  
+  # Create a dummy variable for expired patients (dead). Disposition = 6  matches with expired.   
+  
+  grep("Expired", ny_dispositions)
+  ny_dispositions[6]
+  
+  hospdata$dead<-0
+  hospdata$dead<-ifelse(hospdata$disposition==6,1,hospdata$dead) 
+  
+  # Create a dummy variable for Diabetes mellitus. 
+  
+  hospdata$diabetes<-0
+  hospdata$diabetes<-ifelse(hospdata$diagnosis>=195 & hospdata$diagnosis<=198,1,hospdata$diabetes)
+  
+  #Create dummy variable for diabetes-related complications
+  
+  hospdata$compl<-0
+  hospdata$compl<-ifelse(hospdata$diagnosis==195|hospdata$diagnosis==196,1,hospdata$compl)
+  
+  
+  # Remove comma from cost variable and different entries exept 0-9. digits.
+  
+  hospdata$cost<-as.numeric(gsub("[^0-9.]","",hospdata$cost))
+  hospdata$los <-as.numeric(gsub("[^0-9.]","",hospdata$los))
+  
+  # Create a dataframe with the selected variables. Include all the rows and the specified selected columns.   
+  
+  ny_hospdata<-hospdata[,c("year2021","ny_hosp_id","ny_county","ny_area","cl_age",
+                           "males","white","zipcode","adm_type","race","ethnicity","los",
+                           "disposition","diagnosis","procedure","drg","mdc","severity",
+                           "risk","payment_type","cost","surgical",
+                           "dead","diabetes","compl")]
+  
+  # Save the re-encoded and reduced data frame in .csv format in the working directory. Row names setted as false because first column does not contains the names of the observations.      
+  
+  ##write.csv(ny_hospdata,output,row.names=FALSE)
+  
+  write.csv(ny_hospdata,"ny_hospdata.csv",row.names=FALSE)  # Manual save
+  
+  ##  Save the levels in an external file 
+  
+  # Save the levels of factor variables in a text file (.txt).
+  
+  sink(value_labels)
+  # sink()  # Manual run 
+  cat ("\n")
+  cat ("Counties\n")
+  cat ("##################################\n")
+  cat ("\n")
+  print(ny_counties)
+  cat ("\n")
+  cat ("Areas\n")
+  cat ("##################################\n")
+  cat ("\n")
+  print(ny_areas)
+  cat ("\n")
+  cat ("Age\n")
+  cat ("##################################\n")
+  cat ("\n")
+  print(ny_age)
+  cat ("\n")
+  cat ("Adm Types\n")
+  cat ("##################################\n")
+  cat ("\n")
+  print(ny_adm_types)
+  cat ("\n")
+  cat ("Races\n")
+  cat ("##################################\n")
+  cat ("\n")
+  print(ny_races)
+  cat ("\n")
+  cat ("Ethnicities\n")
+  cat ("##################################\n")
+  cat ("\n")
+  print(ny_ethnicities)
+  cat ("\n")
+  cat ("Diagnoses\n")
+  cat ("##################################\n")
+  cat ("\n")
+  print(ny_diags)
+  cat ("\n")
+  cat ("Procedures\n")
+  cat ("##################################\n")
+  cat ("\n")
+  print(ny_procs)
+  cat ("\n")
+  cat ("Dispositions\n")
+  cat ("##################################\n")
+  cat ("\n")
+  print(ny_dispositions)
+  cat ("\n")
+  cat ("Risks\n")
+  cat ("##################################\n")
+  cat ("\n")
+  print(ny_risks)
+  sink()
+  
+  # Remove hospdata (the complete dataset) from Global environment to clear the memory.
+  
+  rm(hospdata)
+}
+
+
+# Use the function created. Parameters: input equal to the NYSDOH data and value_labels.txt and  output reduced dataset in .csv format saved 
+# in the working directory and text file with the levels of the  factor variables.
+
+create_hospdata(input="hospdata1921.csv",output="ny_hospdata.csv", value_labels="value_labels.txt")
+
+## Load and save the reduced dataset ----
+
+# Load the reduced dataset.
+
+ny_hospdata<-read.csv("ny_hospdata.csv")
+
+
+# Save to RDA file. The RDA format is less heavy and loads quicker. 
+
+save(ny_hospdata,file="ny_hospdata.Rda")
+
+
+# From now on we will use only the RDA files. 
+
+rm(ny_hospdata)
+load("ny_hospdata.Rda")
+
+
+#INITIAL ANALYSIS
+diadata<-ny_hospdata[ny_hospdata$diabetes==1,] 
+diadata19<-diadata[diadata$year2021==0,]
+diadata21<-diadata[diadata$year2021==1,]
+quantile(diadata19$los,probs=0.8)
+quantile(diadata21$los,probs=0.8)
+
+#since the threshold between the 4th and the 5th quintile of length of stay is 8 days, we create a binary variable
+#called los8: 0 for those who have los <8; 1 for those who have los>=8
+
+diadata$los8<-0
+diadata$los8<-ifelse(diadata$los>=8,1,diadata$los8)
+
+#Create a variable for amputations (now it should work)
+
+diadata$ampt<-0
+diadata$ampt <- ifelse(diadata$procedure==5 | diadata$procedure==26| 
+                       diadata$procedure==114| 
+                       diadata$procedure==300, 1, diadata$ampt)
+#5:"ABOVE KNEE AND OTHER PROXIMAL LOWER EXTREMITY AMPUTATION"
+#26:"BELOW KNEE AMPUTATION"
+#114:"FINGER AND OTHER UPPER EXTREMITY AMPUTATION"  
+#300: "TOE AND MID FOOT AMPUTATION" 
+
+
+# Re-encode risk and severity of illness.
+
+#ny_risks:  # Extreme=2, Major=3, Minor=4, Moderate=5 (the natural order: 0 -> Minor, 1 -> Moderate, 2 -> Major and 3 -> Extreme)
+
+diadata$risky<-NA                
+diadata$risky<-ifelse(diadata$risk=="4",0,diadata$risky) # <= the order is inverted
+diadata$risky<-ifelse(diadata$risk=="5",1,diadata$risky)    
+diadata$risky<-ifelse(diadata$risk=="3",2,diadata$risky)
+diadata$risky<-ifelse(diadata$risk=="2",3,diadata$risky)
+
+#dummy variable for risk
+diadata$d_risky<-0
+diadata$d_risky<-ifelse(diadata$risky>=2,1,diadata$d_risky)
+diadata$d_risky<-ifelse(is.na(diadata$risky)==TRUE,NA,diadata$d_risky)
+
+
+#ny_severities:  # Extreme=2, Major=3, Minor=4, Moderate=5 
+
+diadata$severe<-NA
+diadata$severe<-ifelse(diadata$severity=="4",0,diadata$severe)# <= the order is inverted
+diadata$severe<-ifelse(diadata$severity=="5",1,diadata$severe)  
+diadata$severe<-ifelse(diadata$severity=="3",2,diadata$severe)
+diadata$severe<-ifelse(diadata$severity=="2",3,diadata$severe)
+
+ny_severities
+ny_risks
+#dummy variable for severity
+diadata$d_severe<-0
+diadata$d_severe<-ifelse(diadata$severe>=2,1,diadata$d_severe)
+diadata$d_severe<-ifelse(is.na(diadata$severe)==TRUE,NA,diadata$d_severe)
+
+ny_age
+#dummy variables for age
+diadata$age70ormore <- as.numeric(diadata$cl_age == 4)
+diadata$fiftyto69 <- as.numeric(diadata$cl_age == 5)
+diadata$more_than49<-0
+diadata$more_than49<-ifelse(diadata$cl_age>3,1,diadata$more_than49)
+diadata$more_than49<-ifelse(is.na(diadata$cl_age)==TRUE,NA,diadata$more_than49)
+
+# Save the subset
+
+save(diadata,file="diadata.Rda")
+
+# Quick analysis
+
+##2019
+table(diadata19$diabetes,diadata19$los8)  # table with absolute frequencies (rows= diabetes) .  
+round(prop.table(table(diadata19$diabetes,diadata19$los8)),4)
+table(diadata19$compl,diadata19$los8)
+round(prop.table(table(diadata19$compl,diadata19$los8)),4)
+table(diadata$year2021,diadata$los8)
+round(prop.table(table(diadata$year2021,diadata$los8)),4)
+##2021
+table(diadata21$diabetes,diadata21$los8)  # table with absolute frequencies (rows= diabetes) .  
+round(prop.table(table(diadata21$diabetes,diadata21$los8)),4)
+table(diadata21$compl,diadata21$los8)
+round(prop.table(table(diadata21$compl,diadata21$los8)),4)
+table(diadata$year2021,diadata$los8)
+round(prop.table(table(diadata$year2021,diadata$los8)),4)
+# Consider each level of the severity of illness 
+##2019
+table(diadata19$severe,diadata19$los8)
+round(prop.table(table(diadata19$severe,diadata19$los8),1),2)
+##2021
+table(diadata21$severe,diadata21$los8)
+round(prop.table(table(diadata21$severe,diadata21$los8),1),2)
+# Split the data into subsets and return the result in a convenient form. FUN parameter computes summary statistics which can be applied to all data subsets.
+
+m_dia<-aggregate(diadata$los8,by=list(diadata$year2021,diadata$ny_hosp_id),FUN="mean")
+m_dia_nrow<-aggregate(diadata$los8,by=list(diadata$year2021,diadata$ny_hosp_id),FUN="NROW")    # Nr. of rows for each hospital_id.
+names(m_dia)<-c("year2021","ny_hosp_id","cr")                   
+names(m_dia_nrow)<-c("year2021","ny_hosp_id","n")               
+m_dia<-merge(m_dia,m_dia_nrow,by=c("ny_hosp_id","year2021"))    # Merge data matching data frames by the id of the hospitals found in both data frames
+m_dia$cr<-m_dia$cr*100                               # los8 rates*100
+
+# Aggregate the deaths by ny areas
+m_dia_area<-aggregate(diadata$los8,by=list(diadata$year2021,diadata$ny_area),FUN="mean")      # los8 rates, grouped by NY area 
+names(m_dia_area)<-c("year2021","ny_area","los8_rate")                                 
+m_dia_area$los8_rate<-round(m_dia_area$los8_rate*1000,2)                     # los8 rates (x1000)
+
+
+### Bivariate analysis ----
+
+#### Categorical variables ---- 
+##2019
+chisq.test(diadata19$males,diadata19$los8, correct=FALSE)   #highly significant
+chisq.test(diadata19$white,diadata19$los8, correct=FALSE)   #highly significant
+chisq.test(diadata19$year2021,diadata19$los8, correct=FALSE) #significant
+chisq.test(diadata19$compl,diadata19$los8, correct=FALSE)   #highly significant
+chisq.test(diadata19$ampt,diadata19$los8, correct=FALSE)    #highly significant
+##2021
+chisq.test(diadata21$males,diadata21$los8, correct=FALSE)   #highly significant
+chisq.test(diadata21$white,diadata21$los8, correct=FALSE)   #highly significant
+chisq.test(diadata21$year2021,diadata21$los8, correct=FALSE) #significant
+chisq.test(diadata21$compl,diadata21$los8, correct=FALSE)   #highly significant
+chisq.test(diadata21$ampt,diadata21$los8, correct=FALSE)    #highly significant
+
+##2019
+CrossTable(diadata19$males,diadata19$los8)
+CrossTable(diadata19$white,diadata19$los8)
+CrossTable(diadata19$year2021,diadata19$los8)
+CrossTable(diadata19$compl,diadata19$los8)
+CrossTable(diadata19$ampt,diadata19$los8)
+##2021
+CrossTable(diadata21$males,diadata21$los8)
+CrossTable(diadata21$white,diadata21$los8)
+CrossTable(diadata21$year2021,diadata21$los8)
+CrossTable(diadata21$compl,diadata21$los8)
+CrossTable(diadata21$ampt,diadata21$los8)
+
+
+oddsratio(diadata$males,diadata$los8)  #OR=1.12
+oddsratio(diadata$white,diadata$los8)  #OR=1.07
+oddsratio(diadata$year2021,diadata$los8)  #OR=1.03
+oddsratio(diadata$compl,diadata$los8)  #OR=5.58
+oddsratio(diadata$ampt,diadata$los8)   #OR=5.77
+oddsratio(diadata$d_severe,diadata$los8)  #OR=5.33
+oddsratio(diadata$d_risky,diadata$los8)  #OR=3.49
+oddsratio(diadata$dead,diadata$los8)    #OR=5.29
+oddsratio(diadata$surgical,diadata$los8) #OR=6.43
+oddsratio(diadata$more_than49,diadata$los8) #OR=5.16
+ny_age
+##############numero de ny_procs for amputations 6,26, 112,294
+
+#variables for the model: 
+#age, sex, ampt, risk, severity, compl, white,cost, county,ampt
+
+
+
+####################################################################################
+###################### logistic GLM and GEE models #####################
+
+diadata$los30<-0
+diadata$los30<-ifelse(diadata$los>=30,1,diadata$los30)
+diadata=na.omit(diadata)
+##2019
+logit_model_19<-glm(los8~age70ormore+fiftyto69+males+white+ny_area+cost+
+                   d_risky+d_severe+compl+ampt,
+                 family = binomial("logit"),data=diadata19)
+logit_model2_19<-glm(los8~d_severe,
+                 family = binomial("logit"),data=diadata19)
+
+summary(logit_model_19)
+summary(logit_model2_19)
+
+##2021
+logit_model_21<-glm(los8~age70ormore+fiftyto69+males+white+ny_area+cost+
+                   d_risky+d_severe+compl+ampt,
+                 family = binomial("logit"),data=diadata21)
+logit_model2_21<-glm(los8~d_severe,
+                  family = binomial("logit"),data=diadata21)
+summary(logit_model_21)
+summary(logit_model2_21)
+#we need to apply backward selection 
+library(MASS)
+##2019
+backward_model_19 <- stepAIC(logit_model_19, direction = "backward")
+summary(backward_model_19)
+
+##2021
+backward_model_21 <- stepAIC(logit_model_21, direction = "backward")
+summary(backward_model_21)
+###################################
+##################### ROC ANALYSIS ################################
+
+##2019
+diadata19$p<- predict(logit_model2_19,newdata=diadata19,type="response")
+library(ROCR)
+pr_19 <- prediction(diadata19[!is.na(diadata19$p),c("p")],
+                 diadata19[!is.na(diadata19$p),c("los8")]) 
+
+prf_19 <- performance(pr_19, measure = "tpr", x.measure = "fpr") 
+plot(prf_19) 
+abline(a=0, b= 1) 
+title("ROC Curve Reduced Model 2019") 
+
+
+auc_19 <- performance(pr_19, measure = "auc")
+message(paste(("AUC REDUCED FOR 2019:"),auc_19@y.values[[1]]))
+##2021
+diadata21$p<- predict(logit_model2_21,newdata=diadata21,type="response")
+pr_21 <- prediction(diadata21[!is.na(diadata21$p),c("p")],
+                 diadata21[!is.na(diadata21$p),c("los8")]) 
+
+prf_21 <- performance(pr_21, measure = "tpr", x.measure = "fpr") 
+plot(prf_21) 
+abline(a=0, b= 1) 
+title("ROC Curve Reduced Model 2021") 
+
+
+auc_21 <- performance(pr_21, measure = "auc")
+message(paste(("AUC REDUCED FOR 2021:"),auc_21@y.values[[1]]))
+#to compare both models
+##2019
+diadata19$p2<- predict(logit_model_19,newdata=diadata19,type="response")
+
+pr2_19 <- prediction(diadata19[!is.na(diadata19$p2),c("p2")],
+                  diadata19[!is.na(diadata19$p),c("los8")])
+
+prf2_19 <- performance(pr2_19, measure = "tpr", x.measure = "fpr")
+plot(prf2_19)
+abline(a=0, b= 1)
+title("ROC Curve Full Model 2019")
+
+auc2_19<- performance(pr2_19, measure = "auc")
+message(paste(("AUC FULL FOR 2019:"),auc2_19@y.values[[1]]))
+
+plot(prf_19, col="red", lwd = 2)
+plot(prf2_19, col="green", add=T)
+legend("bottomright",c('Reduced model','Full Model'),lty=c(1,1),lwd=c(1,1),
+       col=c('red', 'green'), cex = 1.8,bty = "n")
+abline(a=0, b= 1)
+title("Roc curves for 2019")
+
+##2021
+diadata21$p2<- predict(logit_model_21,newdata=diadata21,type="response")
+
+pr2_21 <- prediction(diadata21[!is.na(diadata21$p2),c("p2")],
+                  diadata21[!is.na(diadata21$p),c("los8")])
+
+prf2_21 <- performance(pr2_21, measure = "tpr", x.measure = "fpr")
+plot(prf2_21)
+abline(a=0, b= 1)
+title("ROC Curve Full Model for 2021")
+
+auc2_21<- performance(pr2_21, measure = "auc")
+message(paste(("AUC FULL FOR 2021:"),auc2_21@y.values[[1]]))
+
+plot(prf_21, col="red", lwd = 2)
+plot(prf2_21, col="green", add=T)
+legend("bottomright",c('Reduced model','Full Model'),lty=c(1,1),lwd=c(1,1),
+       col=c('red', 'green'), cex = 1.8,bty = "n")
+abline(a=0, b= 1)
+title("Roc curves for 2021")
+###for the cut point
+library(cutpointr)
+##2019
+optimal_cut_1_19<-cutpointr(data=diadata19,x=p,class=dead,na.rm=TRUE,
+                         method=maximize_metric,metric=youden,use_midpoint=TRUE)
+optimal_cut_1_19$optimal_cutpoint
+summary(optimal_cut_1_19)
+
+diadata19$d_score_1<-ifelse(diadata19$p>=optimal_cut_1_19$optimal_cutpoint,1,0)
+diadata19$d_score_1<-ifelse(is.na(diadata19$p),NA,diadata19$d_score_1)
+##2021
+optimal_cut_1_21<-cutpointr(data=diadata21,x=p,class=dead,na.rm=TRUE,
+                         method=maximize_metric,metric=youden,use_midpoint=TRUE)
+optimal_cut_1_21$optimal_cutpoint
+summary(optimal_cut_1_21)
+
+diadata21$d_score_1<-ifelse(diadata21$p>=optimal_cut_1_21$optimal_cutpoint,1,0)
+diadata21$d_score_1<-ifelse(is.na(diadata21$p),NA,diadata21$d_score_1)
+
+library(pROC)
+library(ROCit)
+
+##2019
+pROC_1_19<- pROC::plot.roc(diadata19$dead,diadata19$p,
+                        main="Confidence interval of a threshold", percent=T,
+                        ci=TRUE, of="thresholds", 
+                        thresholds="best", 
+                        print.thres=optimal_cut_1_19$optimal_cutpoint,
+                        print.thres.col="red")
+ci_auc_1_19<-ciAUC(rocit(score=diadata19$p,diadata19$los8))
+##2021
+pROC_1_21<- pROC::plot.roc(diadata21$dead,diadata21$p,
+                        main="Confidence interval of a threshold", percent=T,
+                        ci=TRUE, of="thresholds", 
+                        thresholds="best", 
+                        print.thres=optimal_cut_1_21$optimal_cutpoint,
+                        print.thres.col="red")
+ci_auc_1_21<-ciAUC(rocit(score=diadata21$p,diadata21$los8))
+
+############to compare again
+##2019
+optimal_cut_2_19<-cutpointr(data=diadata19,x=p2,class=dead,na.rm=TRUE,
+                         method=maximize_metric,metric=youden,use_midpoint=TRUE)
+summary(optimal_cut_2_19)
+diadata19$d_score_2<-ifelse(diadata19$p>=optimal_cut_2_19$optimal_cutpoint,1,0)
+diadata19$d_score_2<-ifelse(is.na(diadata19$p2),NA,diadata19$d_score_2)
+pROC_2_19<- pROC::plot.roc(diadata19$dead,diadata19$p2,
+                        main="Confidence interval of a threshold", percent=T,
+                        ci=TRUE, of="thresholds",
+                        thresholds="best",
+                        print.thres=optimal_cut_2_19$optimal_cutpoint,
+                        print.thres.col="red")
+ci_auc_2_19<-ciAUC(rocit(score=diadata19$p2,diadata19$los8))
+
+plot(pROC_1_19,col="red",lty=2, main="2019")
+text(round(optimal_cut_1_19$specificity*100,1)-10,round(optimal_cut_1_19$sensitivity*100,1)-
+       2,
+     paste(round(optimal_cut_1_19$optimal_cutpoint,4),"
+(",round(optimal_cut_1_19$specificity*100,1),
+           ",",round(optimal_cut_1_19$sensitivity*100,1),")",sep=""),cex=0.65,col="red")
+
+plot(pROC_2_19,type="shape",col="blue",lty=3,add=TRUE)
+text(round(optimal_cut_2_19$specificity*100,1)-8,round(optimal_cut_2_19$sensitivity*100,1)-
+       2,
+     paste(round(optimal_cut_2_19$optimal_cutpoint,4),"
+(",round(optimal_cut_2_19$specificity*100,1),
+           ",",round(optimal_cut_2_19$sensitivity*100,1),")",sep=""),cex=0.65,col="blue")
+
+legend("bottomright", legend = c(
+  paste("Score pROC_1 AUC: ",format(round(ci_auc_1_19$AUC*100,1),nsmall=1),
+        " (",round(ci_auc_1_19$lower*100,1),"-",round(ci_auc_1_19$upper*100,1),")",sep=""),
+  paste("Score pROC_2 AUC: ",format(round(ci_auc_2_19$AUC*100,1),nsmall=1),
+        " (",round(ci_auc_2_19$lower*100,1),"-",round(ci_auc_2_19$upper*100,1),")",sep="")
+), inset=c(.02,.04),col = c("red","blue"),lty=c(2,3),lwd=c(2,2))
+
+
+##2021
+optimal_cut_2_21<-cutpointr(data=diadata21,x=p2,class=dead,na.rm=TRUE,
+                            method=maximize_metric,metric=youden,use_midpoint=TRUE)
+summary(optimal_cut_2_21)
+diadata21$d_score_2<-ifelse(diadata21$p>=optimal_cut_2_21$optimal_cutpoint,1,0)
+diadata21$d_score_2<-ifelse(is.na(diadata21$p2),NA,diadata21$d_score_2)
+pROC_2_21<- pROC::plot.roc(diadata21$dead,diadata21$p2,
+                           main="Confidence interval of a threshold", percent=T,
+                           ci=TRUE, of="thresholds",
+                           thresholds="best",
+                           print.thres=optimal_cut_2_21$optimal_cutpoint,
+                           print.thres.col="red")
+ci_auc_2_21<-ciAUC(rocit(score=diadata21$p2,diadata21$los8))
+
+plot(pROC_1_21,col="red",lty=2, main="2021")
+text(round(optimal_cut_1_21$specificity*100,1)-10,round(optimal_cut_1_21$sensitivity*100,1)-
+       2,
+     paste(round(optimal_cut_1_21$optimal_cutpoint,4),"
+(",round(optimal_cut_1_21$specificity*100,1),
+           ",",round(optimal_cut_1_21$sensitivity*100,1),")",sep=""),cex=0.65,col="red")
+
+plot(pROC_2_21,type="shape",col="blue",lty=3,add=TRUE)
+text(round(optimal_cut_2_21$specificity*100,1)-8,round(optimal_cut_2_21$sensitivity*100,1)-
+       2,
+     paste(round(optimal_cut_2_21$optimal_cutpoint,4),"
+(",round(optimal_cut_2_21$specificity*100,1),
+           ",",round(optimal_cut_2_21$sensitivity*100,1),")",sep=""),cex=0.65,col="blue")
+
+legend("bottomright", legend = c(
+  paste("Score pROC_1 AUC: ",format(round(ci_auc_1_21$AUC*100,1),nsmall=1),
+        " (",round(ci_auc_1_21$lower*100,1),"-",round(ci_auc_1_21$upper*100,1),")",sep=""),
+  paste("Score pROC_2 AUC: ",format(round(ci_auc_2_21$AUC*100,1),nsmall=1),
+        " (",round(ci_auc_2_21$lower*100,1),"-",round(ci_auc_2_21$upper*100,1),")",sep="")
+), inset=c(.02,.04),col = c("red","blue"),lty=c(2,3),lwd=c(2,2))
+############## MODEL VALIDATION #######################
+
+
+
+############# CROSS VALIDATION ########################
+
+
+
+################  GEE MODEL ###########################
+#some problems if we cluster for year (R crashes)
+library(geepack)
+
+##2019
+modgee19<-geeglm(los8~white+ny_area+
+                 d_risky+d_severe+compl+ampt+males+cl_age,data=diadata19,id=ny_hosp_id,family=binomial("logit"),corstr="exchangeable")
+summary(modgee19)
+names(modgee19)
+
+confint.geeglm <- function(object, parm, level = 0.95, ...) {
+  cc <- coef(summary(object))
+  mult <- qnorm((1+level)/2)
+  citab <- with(as.data.frame(cc),
+                cbind(Lower=Estimate-mult*Std.err,
+                      Upper=Estimate+mult*Std.err))
+  rownames(citab) <- rownames(cc)
+  citab[parm,]
+}
+
+cbind(coef(summary(modgee19)),confint.geeglm(modgee19))
+cbind(coef(summary(backward_model_19)),confint(backward_model_19))   #to make a comparison
+
+##2021
+modgee21<-geeglm(los8~white+ny_area+
+                 d_risky+d_severe+compl+ampt+males+cl_age,data=diadata21,id=ny_hosp_id,family=binomial("logit"),corstr="exchangeable")
+summary(modgee21)
+names(modgee21)
+
+
+cbind(coef(summary(modgee21)),confint.geeglm(modgee21))
+cbind(coef(summary(backward_model_21)),confint(backward_model_21))   #to make a comparison
+#################################
+#summary tables for demographics: age, sex and race
+library(dplyr)
+
+##2019
+tabledemographic1_19<-diadata19 %>% 
+  mutate(value = ny_age[cl_age]) %>% 
+  group_by(value) %>% 
+  summarise(characteristic="age", Patients = n(), Average_lenghofstay=mean(los), min=min(los), max=max(los),deaths=sum(dead))
+
+tabledemographic2_19<-diadata19 %>% 
+  mutate(value = if_else(diadata19$male==1,"male","female")) %>% 
+  group_by(value) %>% 
+  summarise(characteristic="sex",  Patients = n(), Average_lenghofstay=mean(los), min=min(los), max=max(los),deaths=sum(dead))
+
+tabledemographic3_19<-diadata19 %>% 
+  mutate(value = ny_races[diadata19$race]) %>% 
+  group_by(value) %>% 
+  summarise(characteristic="race",  Patients = n(), Average_lenghofstay=mean(los), min=min(los), max=max(los),deaths=sum(dead))
+
+##2021
+tabledemographic1_21<-diadata21 %>% 
+  mutate(value = ny_age[cl_age]) %>% 
+  group_by(value) %>% 
+  summarise(characteristic="age", Patients = n(), Average_lenghofstay=mean(los), min=min(los), max=max(los),deaths=sum(dead))
+
+tabledemographic2_21<-diadata21 %>% 
+  mutate(value = if_else(diadata21$male==1,"male","female")) %>% 
+  group_by(value) %>% 
+  summarise(characteristic="sex",  Patients = n(), Average_lenghofstay=mean(los), min=min(los), max=max(los),deaths=sum(dead))
+
+tabledemographic3_21<-diadata21 %>% 
+  mutate(value = ny_races[diadata21$race]) %>% 
+  group_by(value) %>% 
+  summarise(characteristic="race",  Patients = n(), Average_lenghofstay=mean(los), min=min(los), max=max(los),deaths=sum(dead))
+
+
+#summary table for Admission/Hospital characteristics severity, county, compl
+
+##2019
+tabledemographic4_19<-diadata19 %>% 
+  mutate(value = ny_severities[severity]) %>% 
+  group_by(value) %>% 
+  summarise(characteristic="severity", Patients = n(), Average_lenghofstay=mean(los), min=min(los), max=max(los),deaths=sum(dead))
+
+tabledemographic5_19<-diadata19 %>% 
+  mutate(value = ny_areas[diadata19$ny_area]) %>% 
+  group_by(value) %>% 
+  summarise(characteristic="area",  Patients = n(), Average_lenghofstay=mean(los), min=min(los), max=max(los),deaths=sum(dead))
+
+tabledemographic6_19<-diadata19 %>% 
+  mutate(value = if_else(compl==1,"With Complications",
+                                 "Without Complications")) %>% 
+  group_by(value) %>% 
+  summarise(characteristic="Diabetes complications", Patients = n(), Average_lenghofstay=mean(los), min=min(los), max=max(los),deaths=sum(dead))
+
+##2021
+tabledemographic4_21<-diadata21 %>% 
+  mutate(value = ny_severities[severity]) %>% 
+  group_by(value) %>% 
+  summarise(characteristic="severity", Patients = n(), Average_lenghofstay=mean(los), min=min(los), max=max(los),deaths=sum(dead))
+
+tabledemographic5_21<-diadata21 %>% 
+  mutate(value = ny_areas[diadata21$ny_area]) %>% 
+  group_by(value) %>% 
+  summarise(characteristic="area",  Patients = n(), Average_lenghofstay=mean(los), min=min(los), max=max(los),deaths=sum(dead))
+
+tabledemographic6_21<-diadata21 %>% 
+  mutate(value = if_else(compl==1,"With Complications",
+                         "Without Complications")) %>% 
+  group_by(value) %>% 
+  summarise(characteristic="Diabetes complications", Patients = n(), Average_lenghofstay=mean(los), min=min(los), max=max(los),deaths=sum(dead))
+
+
+tabledemographic7<-diadata %>% 
+  mutate(value = if_else(diadata$year2021==1,"2021","2019")) %>% 
+  group_by(value) %>% 
+  summarise(characteristic="Year",  Patients = n(), Average_lenghofstay=mean(los), min=min(los), max=max(los),deaths=sum(dead),amputations=sum(ampt),los8=sum(los8))
+
+
+
+diadata$procesos <- ny_procs[diadata$procedure]
+
+unique(diadata$procesos)
+
+#summary for demographic characteristics
+demog_car_19<-rbind(tabledemographic1_19,tabledemographic2_19,tabledemographic3_19)
+demog_car_21<-rbind(tabledemographic1_21,tabledemographic2_21,tabledemographic3_21)
+
+#summary for hospital characteristics
+Hospital_car_19<-rbind(tabledemographic4_19,tabledemographic5_19,tabledemographic6_19)
+Hospital_car_21<-rbind(tabledemographic4_21,tabledemographic5_21,tabledemographic6_21)
+
+write.csv(demog_car,"demog_car.csv")
+write.csv(demog_car,"hospital_car.csv")
