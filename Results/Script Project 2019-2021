@@ -293,6 +293,16 @@ diadata$more_than49<-0
 diadata$more_than49<-ifelse(diadata$cl_age>3,1,diadata$more_than49)
 diadata$more_than49<-ifelse(is.na(diadata$cl_age)==TRUE,NA,diadata$more_than49)
 
+#Levels: Elective Emergency Newborn Not Available Trauma Urgent
+diadata$d_admtype<-0
+diadata$d_admtype<-ifelse(diadata$adm_type==2|diadata$adm_type>4,1,diadata$d_admtype)
+
+diadata$pci<-0
+diadata$pci<-ifelse(diadata$procedure==227,1,diadata$pci)
+
+diadata$dialysis<-0
+diadata$dialysis<-ifelse(diadata$procedure==140|diadata$procedure==237,1,diadata$dialysis)
+
 # Save the subset
 
 save(diadata,file="diadata.Rda")
@@ -378,243 +388,96 @@ oddsratio(diadata$more_than49,diadata$los8) #OR=5.16
 ny_age
 ##############numero de ny_procs for amputations 6,26, 112,294
 
-#variables for the model: 
-#age, sex, ampt, risk, severity, compl, white,cost, county,ampt
 
 
 
 ####################################################################################
 ###################### logistic GLM and GEE models #####################
 
-diadata$los30<-0
-diadata$los30<-ifelse(diadata$los>=30,1,diadata$los30)
-diadata=na.omit(diadata)
 ##2019
-logit_model_19<-glm(los8~age70ormore+fiftyto69+males+white+ny_area+cost+
-                   d_risky+d_severe+compl+ampt,
-                 family = binomial("logit"),data=diadata19)
-logit_model2_19<-glm(los8~d_severe,
-                 family = binomial("logit"),data=diadata19)
+#FULL MODEL
+logit_model<-glm(los8~white+d_risky+d_severe+ny_area+males+more_than49+ampt+d_admtype+pci+dialysis,
+                 family = binomial(link="logit"),data=diadata19)
+summary(logit_model)
 
-summary(logit_model_19)
-summary(logit_model2_19)
-
-##2021
-logit_model_21<-glm(los8~age70ormore+fiftyto69+males+white+ny_area+cost+
-                   d_risky+d_severe+compl+ampt,
-                 family = binomial("logit"),data=diadata21)
-logit_model2_21<-glm(los8~d_severe,
-                  family = binomial("logit"),data=diadata21)
-summary(logit_model_21)
-summary(logit_model2_21)
 #we need to apply backward selection 
-library(MASS)
-##2019
-backward_model_19 <- stepAIC(logit_model_19, direction = "backward")
-summary(backward_model_19)
 
-##2021
-backward_model_21 <- stepAIC(logit_model_21, direction = "backward")
-summary(backward_model_21)
-###################################
+#REDUCED MODEL
+library(MASS)
+backward_model <- step(logit_model, direction = "backward")
+summary(backward_model)
+
+
+ # Carry out formal test using the likelihood ratio
+ndiffpars<-length(logit_model$coefficients)-length(backward_model$coefficients)       # Difference of number of variables- degrees of freedom 
+LL1<-(-2*as.numeric(logLik(logit_model)))                                            # -2 * log-likelihood of full model
+LL2<-(-2*as.numeric(logLik(backward_model)))                                         # -2 * log-likelihood of reduced model
+LR<-pchisq(LL2-LL1,ndiffpars,lower.tail=FALSE)                                      # Chi Square test of: -2 * (log-likelihood of reduced model -log-likelihood of full model)
+message(paste("-2 LogLik FULL:",LL1))                                               # Show -2 * log-likelihood of full model                          
+message(paste("-2 LogLik REDUCED:",LL2))                                            # Show  -2 * log-likelihood of reduced model
+message(paste("Likelihood Ratio:",LL2-LL1,"; P(chi-square)=",round(LR,4),"; df=",ndiffpars)) # Show Likelihood ratio, p value of chi square test and degrees of freedom
+
+
 ##################### ROC ANALYSIS ################################
 
 ##2019
-diadata19$p<- predict(logit_model2_19,newdata=diadata19,type="response")
-library(ROCR)
-pr_19 <- prediction(diadata19[!is.na(diadata19$p),c("p")],
-                 diadata19[!is.na(diadata19$p),c("los8")]) 
 
-prf_19 <- performance(pr_19, measure = "tpr", x.measure = "fpr") 
-plot(prf_19) 
-abline(a=0, b= 1) 
-title("ROC Curve Reduced Model 2019") 
+# Extract the predicted probabilities
+diadata19$p<- predict(backward_model,newdata=diadata19,type="response")
+
+#ACCURACY REDUCED MODEL
+diadata19$p<- predict(backward_model,newdata=diadata19,type="response")
+predicted.value <- ifelse(diadata19$p> 0.5,1,0)
+discordant <- mean(predicted.value != diadata19$los8,na.rm=TRUE)
+message(paste('Accuracy of the REDUCED model:',1-discordant))
+
+# Compute predicted scores and graph thresholds in the ROC curve using the ROCR package
+pr <- prediction(diadata19[!is.na(diadata19$p),c("p")],diadata19[!is.na(diadata19$p),c("los8")]) # Transforms the input data into "performance object" used from ROCR package
+prf <- performance(pr, measure = "tpr", x.measure = "fpr")                               # An object of ROCR package that contains True positive rates and False positive rates
+plot(prf)                                                                                # Receiver operating characteristic (ROC) Curve
+abline(a=0, b= 1)                                                                        # Add line with intercept 0 and slope 1
+title("ROC Curve Reduced Model")                                                         # Title of the plot
+
+# Compute area under the curve (AUC). # AUC uses all possible cutpoints for prediction
+auc <- performance(pr, measure = "auc")                                                  # Area under the curve - "AUC object" of ROCR package
+message(paste(("AUC REDUCED:"),auc@y.values[[1]]))  
+
+# Accuracy for  full model using a threshold of 0.5
+diadata19$p2<- predict(logit_model,newdata=diadata19,type="response")
+predicted.value <- ifelse(diadata19$p2> 0.5,1,0)
+discordant <- mean(predicted.value != diadata19$los8,na.rm=TRUE)
+message(paste('Accuracy of the FULL model:',1-discordant))
 
 
-auc_19 <- performance(pr_19, measure = "auc")
-message(paste(("AUC REDUCED FOR 2019:"),auc_19@y.values[[1]]))
-##2021
-diadata21$p<- predict(logit_model2_21,newdata=diadata21,type="response")
-pr_21 <- prediction(diadata21[!is.na(diadata21$p),c("p")],
-                 diadata21[!is.na(diadata21$p),c("los8")]) 
+# ROC cuve and AUC for the full model
 
-prf_21 <- performance(pr_21, measure = "tpr", x.measure = "fpr") 
-plot(prf_21) 
-abline(a=0, b= 1) 
-title("ROC Curve Reduced Model 2021") 
-
-
-auc_21 <- performance(pr_21, measure = "auc")
-message(paste(("AUC REDUCED FOR 2021:"),auc_21@y.values[[1]]))
-#to compare both models
-##2019
-diadata19$p2<- predict(logit_model_19,newdata=diadata19,type="response")
-
-pr2_19 <- prediction(diadata19[!is.na(diadata19$p2),c("p2")],
-                  diadata19[!is.na(diadata19$p),c("los8")])
-
-prf2_19 <- performance(pr2_19, measure = "tpr", x.measure = "fpr")
-plot(prf2_19)
+pr2 <- prediction(diadata19[!is.na(diadata19$p2),c("p2")],diadata19[!is.na(diadata19$p),c("los8")])
+prf2 <- performance(pr2, measure = "tpr", x.measure = "fpr")
+plot(prf2)
 abline(a=0, b= 1)
-title("ROC Curve Full Model 2019")
+title("ROC Curve Full Model")
 
-auc2_19<- performance(pr2_19, measure = "auc")
-message(paste(("AUC FULL FOR 2019:"),auc2_19@y.values[[1]]))
+# Compute area under the curve (AUC)
 
-plot(prf_19, col="red", lwd = 2)
-plot(prf2_19, col="green", add=T)
-legend("bottomright",c('Reduced model','Full Model'),lty=c(1,1),lwd=c(1,1),
-       col=c('red', 'green'), cex = 1.8,bty = "n")
+auc2<- performance(pr2, measure = "auc")
+message(paste(("AUC FULL:"),auc2@y.values[[1]]))
+
+# Compare ROC curves
+
+plot(prf, col="red", lwd = 2)
+plot(prf2, col="green", add=T)
+legend(0.6,0.2,c('Reduced model','Full Model'),lty=c(1,1),lwd=c(1,1),
+       col=c('red', 'green'), cex = 1.3,bty = "n")
 abline(a=0, b= 1)
-title("Roc curves for 2019")
-
-##2021
-diadata21$p2<- predict(logit_model_21,newdata=diadata21,type="response")
-
-pr2_21 <- prediction(diadata21[!is.na(diadata21$p2),c("p2")],
-                  diadata21[!is.na(diadata21$p),c("los8")])
-
-prf2_21 <- performance(pr2_21, measure = "tpr", x.measure = "fpr")
-plot(prf2_21)
-abline(a=0, b= 1)
-title("ROC Curve Full Model for 2021")
-
-auc2_21<- performance(pr2_21, measure = "auc")
-message(paste(("AUC FULL FOR 2021:"),auc2_21@y.values[[1]]))
-
-plot(prf_21, col="red", lwd = 2)
-plot(prf2_21, col="green", add=T)
-legend("bottomright",c('Reduced model','Full Model'),lty=c(1,1),lwd=c(1,1),
-       col=c('red', 'green'), cex = 1.8,bty = "n")
-abline(a=0, b= 1)
-title("Roc curves for 2021")
-###for the cut point
-library(cutpointr)
-##2019
-optimal_cut_1_19<-cutpointr(data=diadata19,x=p,class=dead,na.rm=TRUE,
-                         method=maximize_metric,metric=youden,use_midpoint=TRUE)
-optimal_cut_1_19$optimal_cutpoint
-summary(optimal_cut_1_19)
-
-diadata19$d_score_1<-ifelse(diadata19$p>=optimal_cut_1_19$optimal_cutpoint,1,0)
-diadata19$d_score_1<-ifelse(is.na(diadata19$p),NA,diadata19$d_score_1)
-##2021
-optimal_cut_1_21<-cutpointr(data=diadata21,x=p,class=dead,na.rm=TRUE,
-                         method=maximize_metric,metric=youden,use_midpoint=TRUE)
-optimal_cut_1_21$optimal_cutpoint
-summary(optimal_cut_1_21)
-
-diadata21$d_score_1<-ifelse(diadata21$p>=optimal_cut_1_21$optimal_cutpoint,1,0)
-diadata21$d_score_1<-ifelse(is.na(diadata21$p),NA,diadata21$d_score_1)
-
-library(pROC)
-library(ROCit)
-
-##2019
-pROC_1_19<- pROC::plot.roc(diadata19$dead,diadata19$p,
-                        main="Confidence interval of a threshold", percent=T,
-                        ci=TRUE, of="thresholds", 
-                        thresholds="best", 
-                        print.thres=optimal_cut_1_19$optimal_cutpoint,
-                        print.thres.col="red")
-ci_auc_1_19<-ciAUC(rocit(score=diadata19$p,diadata19$los8))
-##2021
-pROC_1_21<- pROC::plot.roc(diadata21$dead,diadata21$p,
-                        main="Confidence interval of a threshold", percent=T,
-                        ci=TRUE, of="thresholds", 
-                        thresholds="best", 
-                        print.thres=optimal_cut_1_21$optimal_cutpoint,
-                        print.thres.col="red")
-ci_auc_1_21<-ciAUC(rocit(score=diadata21$p,diadata21$los8))
-
-############to compare again
-##2019
-optimal_cut_2_19<-cutpointr(data=diadata19,x=p2,class=dead,na.rm=TRUE,
-                         method=maximize_metric,metric=youden,use_midpoint=TRUE)
-summary(optimal_cut_2_19)
-diadata19$d_score_2<-ifelse(diadata19$p>=optimal_cut_2_19$optimal_cutpoint,1,0)
-diadata19$d_score_2<-ifelse(is.na(diadata19$p2),NA,diadata19$d_score_2)
-pROC_2_19<- pROC::plot.roc(diadata19$dead,diadata19$p2,
-                        main="Confidence interval of a threshold", percent=T,
-                        ci=TRUE, of="thresholds",
-                        thresholds="best",
-                        print.thres=optimal_cut_2_19$optimal_cutpoint,
-                        print.thres.col="red")
-ci_auc_2_19<-ciAUC(rocit(score=diadata19$p2,diadata19$los8))
-
-plot(pROC_1_19,col="red",lty=2, main="2019")
-text(round(optimal_cut_1_19$specificity*100,1)-10,round(optimal_cut_1_19$sensitivity*100,1)-
-       2,
-     paste(round(optimal_cut_1_19$optimal_cutpoint,4),"
-(",round(optimal_cut_1_19$specificity*100,1),
-           ",",round(optimal_cut_1_19$sensitivity*100,1),")",sep=""),cex=0.65,col="red")
-
-plot(pROC_2_19,type="shape",col="blue",lty=3,add=TRUE)
-text(round(optimal_cut_2_19$specificity*100,1)-8,round(optimal_cut_2_19$sensitivity*100,1)-
-       2,
-     paste(round(optimal_cut_2_19$optimal_cutpoint,4),"
-(",round(optimal_cut_2_19$specificity*100,1),
-           ",",round(optimal_cut_2_19$sensitivity*100,1),")",sep=""),cex=0.65,col="blue")
-
-legend("bottomright", legend = c(
-  paste("Score pROC_1 AUC: ",format(round(ci_auc_1_19$AUC*100,1),nsmall=1),
-        " (",round(ci_auc_1_19$lower*100,1),"-",round(ci_auc_1_19$upper*100,1),")",sep=""),
-  paste("Score pROC_2 AUC: ",format(round(ci_auc_2_19$AUC*100,1),nsmall=1),
-        " (",round(ci_auc_2_19$lower*100,1),"-",round(ci_auc_2_19$upper*100,1),")",sep="")
-), inset=c(.02,.04),col = c("red","blue"),lty=c(2,3),lwd=c(2,2))
-
-
-##2021
-optimal_cut_2_21<-cutpointr(data=diadata21,x=p2,class=dead,na.rm=TRUE,
-                            method=maximize_metric,metric=youden,use_midpoint=TRUE)
-summary(optimal_cut_2_21)
-diadata21$d_score_2<-ifelse(diadata21$p>=optimal_cut_2_21$optimal_cutpoint,1,0)
-diadata21$d_score_2<-ifelse(is.na(diadata21$p2),NA,diadata21$d_score_2)
-pROC_2_21<- pROC::plot.roc(diadata21$dead,diadata21$p2,
-                           main="Confidence interval of a threshold", percent=T,
-                           ci=TRUE, of="thresholds",
-                           thresholds="best",
-                           print.thres=optimal_cut_2_21$optimal_cutpoint,
-                           print.thres.col="red")
-ci_auc_2_21<-ciAUC(rocit(score=diadata21$p2,diadata21$los8))
-
-plot(pROC_1_21,col="red",lty=2, main="2021")
-text(round(optimal_cut_1_21$specificity*100,1)-10,round(optimal_cut_1_21$sensitivity*100,1)-
-       2,
-     paste(round(optimal_cut_1_21$optimal_cutpoint,4),"
-(",round(optimal_cut_1_21$specificity*100,1),
-           ",",round(optimal_cut_1_21$sensitivity*100,1),")",sep=""),cex=0.65,col="red")
-
-plot(pROC_2_21,type="shape",col="blue",lty=3,add=TRUE)
-text(round(optimal_cut_2_21$specificity*100,1)-8,round(optimal_cut_2_21$sensitivity*100,1)-
-       2,
-     paste(round(optimal_cut_2_21$optimal_cutpoint,4),"
-(",round(optimal_cut_2_21$specificity*100,1),
-           ",",round(optimal_cut_2_21$sensitivity*100,1),")",sep=""),cex=0.65,col="blue")
-
-legend("bottomright", legend = c(
-  paste("Score pROC_1 AUC: ",format(round(ci_auc_1_21$AUC*100,1),nsmall=1),
-        " (",round(ci_auc_1_21$lower*100,1),"-",round(ci_auc_1_21$upper*100,1),")",sep=""),
-  paste("Score pROC_2 AUC: ",format(round(ci_auc_2_21$AUC*100,1),nsmall=1),
-        " (",round(ci_auc_2_21$lower*100,1),"-",round(ci_auc_2_21$upper*100,1),")",sep="")
-), inset=c(.02,.04),col = c("red","blue"),lty=c(2,3),lwd=c(2,2))
-############## MODEL VALIDATION #######################
-
-
-
-############# CROSS VALIDATION ########################
-
+title("Roc curves")
 
 
 ################  GEE MODEL ###########################
-#some problems if we cluster for year (R crashes)
+#2019
 library(geepack)
-
-##2019
-modgee19<-geeglm(los8~white+ny_area+
-                 d_risky+d_severe+compl+ampt+males+cl_age,data=diadata19,id=ny_hosp_id,family=binomial("logit"),corstr="exchangeable")
-summary(modgee19)
-names(modgee19)
+modgee<-geeglm(los8~white+d_risky+d_severe+males+more_than49+ampt+d_admtype+pci+dialysis,
+                 family = binomial(link="logit"),data=diadata19,id=ny_hosp_id,corstr="exchangeable")
+summary(modgee)
 
 confint.geeglm <- function(object, parm, level = 0.95, ...) {
   cc <- coef(summary(object))
@@ -626,18 +489,10 @@ confint.geeglm <- function(object, parm, level = 0.95, ...) {
   citab[parm,]
 }
 
-cbind(coef(summary(modgee19)),confint.geeglm(modgee19))
-cbind(coef(summary(backward_model_19)),confint(backward_model_19))   #to make a comparison
-
-##2021
-modgee21<-geeglm(los8~white+ny_area+
-                 d_risky+d_severe+compl+ampt+males+cl_age,data=diadata21,id=ny_hosp_id,family=binomial("logit"),corstr="exchangeable")
-summary(modgee21)
-names(modgee21)
+cbind(coef(summary(modgee)),confint.geeglm(modgee))
 
 
-cbind(coef(summary(modgee21)),confint.geeglm(modgee21))
-cbind(coef(summary(backward_model_21)),confint(backward_model_21))   #to make a comparison
+
 #################################
 #summary tables for demographics: age, sex and race
 library(dplyr)
