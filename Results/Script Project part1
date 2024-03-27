@@ -290,6 +290,17 @@ diadata$more_than49<-0
 diadata$more_than49<-ifelse(diadata$cl_age>3,1,diadata$more_than49)
 diadata$more_than49<-ifelse(is.na(diadata$cl_age)==TRUE,NA,diadata$more_than49)
 
+#Levels: Elective Emergency Newborn Not Available Trauma Urgent
+diadata$d_admtype<-0
+diadata$d_admtype<-ifelse(diadata$adm_type==2|diadata$adm_type>4,1,diadata$d_admtype)
+
+diadata$pci<-0
+diadata$pci<-ifelse(diadata$procedure==227,1,diadata$pci)
+
+diadata$dialysis<-0
+diadata$dialysis<-ifelse(diadata$procedure==140|diadata$procedure==237,1,diadata$dialysis)
+
+
 # Save the subset
 
 save(diadata,file="diadata.Rda")
