@@ -488,19 +488,6 @@ legend(0.6,0.2,c('Reduced model','Full Model'),lty=c(1,1),lwd=c(1,1),
 abline(a=0, b= 1)
 title("Roc curves")
 
-#Youden cutpoints
-#FULL MODEL
-y_values <- as.numeric(prf2@y.values[[1]])
-x_values <- as.numeric(prf2@x.values[[1]])
-youden <- max(y_values - x_values)
-youden
-
-#REDUCED
-y_values2 <- as.numeric(prf@y.values[[1]])
-x_values2 <- as.numeric(prf@x.values[[1]])
-youden2 <- max(y_values2 - x_values2)
-youden2
-
 #GEE MODEL
 
 library(geepack)
