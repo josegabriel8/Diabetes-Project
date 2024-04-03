@@ -605,3 +605,494 @@ Hospital_car_21<-rbind(tabledemographic4_21,tabledemographic5_21,tabledemographi
 
 write.csv(demog_car,"demog_car.csv")
 write.csv(demog_car,"hospital_car.csv")
+
+
+
+####///////////////////////////////////////////////////
+#STANDARDIZATION
+####///////////////////////////////////////////////////
+
+
+# DIRECT STANDARDIZATION: 
+
+
+# list.files()
+rm(list=ls())
+options(scipen=999)
+
+library(dplyr)
+
+#preparing the countie population data
+
+popcounty19<-cc_est2019_alldata %>% 
+  filter(STNAME=="New York", YEAR==12) %>%
+  mutate(Age_Category = case_when(
+    AGEGRP %in% 0:10 ~ "0_49",
+    AGEGRP %in% 11:14 ~ "50_69",
+    AGEGRP %in% 15:18 ~ "70_"
+  )) %>%
+  group_by(CTYNAME,COUNTY,Age_Category) %>% 
+  summarise(males=sum(TOT_MALE),females=sum(TOT_FEMALE))
+
+popcounty21 <-cc_est2022_all %>% 
+  filter(STNAME=="New York", YEAR==3) %>%
+  mutate(Age_Category = case_when(
+    AGEGRP %in% 0:10 ~ "0_49",
+    AGEGRP %in% 11:14 ~ "50_69",
+    AGEGRP %in% 15:18 ~ "70_"
+  )) %>%
+  group_by(CTYNAME,COUNTY,Age_Category) %>% 
+  summarise(males=sum(TOT_MALE),females=sum(TOT_FEMALE))
+
+save(popcounty19,file="popcounty19.Rda")
+save(popcounty21,file="popcounty21.Rda")
+
+
+library(tidyr)
+
+# Creamos las nuevas columnas para hombres y mujeres según la categoría de edad
+pop19 <- popcounty19 %>%
+  pivot_longer(cols = c(males, females),
+               names_to = "gender",
+               values_to = "pop") %>%
+  #separate(col = Genero, into = c("Genero", "Categoria"), sep = "_") %>%
+  pivot_wider(names_from = c(Age_Category,gender), values_from = pop)
+
+pop21 <- popcounty21 %>%
+  pivot_longer(cols = c(males, females),
+               names_to = "gender",
+               values_to = "pop") %>%
+  #separate(col = Genero, into = c("Genero", "Categoria"), sep = "_") %>%
+  pivot_wider(names_from = c(Age_Category,gender), values_from = pop)
+
+d<-diadata %>% 
+  filter(diadata$Hospital.County=="na")
+
+save(pop19,file="pop19.Rda")
+save(pop21,file="pop21.Rda")
+
+load(file="pop19.Rda")
+load(file="pop21.Rda")
+
+write.csv(pop19,file = "pop19.csv")
+
+
+
+
+source("methods_lab_functions.R")
+
+#installLibraries(c("Hmisc","gmodels","ggplot2","grid","plyr","gridExtra"))
+
+library(Hmisc)
+library(gmodels)
+require(ggplot2)
+library(gridExtra)
+library(plyr)
+library(grid)
+
+# \\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\
+load(file="diadata.Rda")
+load(file="ny_hospdata1921.Rda")
+
+
+
+
+# \\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\
+# Direct Standardization for  Hospitals ----
+
+# merge categories with few observations
+diadata<-subset(diadata,diadata$year2021==0) #2019
+diadata<-subset(diadata,diadata$year2021==1)#2021
+
+
+diadata<-subset(diadata,diadata$ny_hosp_id!=141) #Redacted for Confidentiality
+diadata<-subset(diadata,diadata$ny_hosp_id!=21) #county not found Cobleskill Regional Hospital
+diadata<-subset(diadata,!is.na(diadata$males)) 
+
+
+diadata$recl_age<-ifelse(diadata$cl_age %in% c(1,2,3),3,diadata$cl_age)
+diadata$age_males<-paste(diadata$recl_age,"_",diadata$males)
+
+
+diadata$hp_c<-if_else(diadata$ny_hosp_id==24,"St Lawrence",diadata$Hospital.County)
+length(unique(diadata$hp_c))
+
+# Create the common structure for the denominator
+n_terms<-length(levels(as.factor(diadata$hp_c)))*length(levels(as.factor(diadata$age_males)))
+std_m<-matrix(c(rep(0,1,n_terms)),length(levels(as.factor(diadata$hp_c))))
+rownames(std_m) <- levels(as.factor(diadata$hp_c))
+colnames(std_m) <- levels(as.factor(diadata$age_males))
+
+
+# Population table for the whole population
+pop_ij<-table(diadata[,c("hp_c")],diadata[,c("age_males")]) #we did not used this one
+totpop<-sum(pop_ij) #i did not used this one
+hosp_names<-levels(as.factor(as.numeric(diadata$ny_hosp_id)))
+
+# Adapt the population table to common structure (if needed)
+pop_ij<-merge(as.data.frame.matrix(pop_ij),as.data.frame.matrix(std_m),by="row.names",all.y=TRUE)
+pop_ij<-as.matrix(pop_ij[,2:7])
+rownames(pop_ij) <- levels(as.factor(diadata$hp_c))
+colnames(pop_ij) <- levels(as.factor(diadata$age_males))
+pop_ij[is.na(pop_ij)] <- 0
+
+#we used this ones
+pop_ij_c<-read.csv("pop_ij_county19.csv")# change for 2021  #https://www2.census.gov/programs-surveys/popest/datasets/2010-2019/counties/asrh/
+pop_ij_c<-read.csv("pop_ij_county21.csv")# change for 2019  #https://www2.census.gov/programs-surveys/popest/datasets/2010-2019/counties/asrh/
+
+pop_ij_c<-as.matrix(pop_ij_c[,2:7])
+
+rownames(pop_ij_c) <- levels(as.factor(diadata$hp_c))
+colnames(pop_ij_c) <- levels(as.factor(diadata$age_males))
+
+totpop_c<-sum(pop_ij_c)
+# CALCULATE CRUDE AND DIRECT STANDARDIZED RATES FOR ALL HOSPITALS
+
+
+
+
+for (i in 1:length(hosp_names)) {
+  
+  # i<-6 # check any level here (do not run the for loop)
+  
+  target_group<-subset(diadata,diadata$ny_hosp_id==hosp_names[i])
+  outcome_intarget<-subset(target_group,target_group$los8==1)
+  
+  label_target_group<-hosp_names[i]
+  
+  num_data<-table(outcome_intarget[,c("hp_c")],outcome_intarget[,c("age_males")])
+  den_data<-table(target_group[,c("hp_c")],target_group[,c("age_males")])
+  
+  # adapt num_data structure if needed
+  if (nrow(num_data)>0) {
+    res<-merge(as.data.frame.matrix(num_data),as.data.frame.matrix(std_m),by="row.names",all.y=TRUE)
+    res<-res[2:7]
+  } else {
+    res<-as.data.frame.matrix(std_m)
+  }
+  res[is.na(res)] <- 0
+  res<-res[,c(sort(names(res)))]
+  
+  res <- as.matrix(res)
+  rownames(res)<-rownames(std_m)
+  res<-rowsum(res,row.names(res))
+  
+  # adapt den_data structure if needed
+  den_data<-merge(as.data.frame.matrix(den_data),as.data.frame.matrix(std_m),by="row.names",all.y=TRUE)
+  den_data<-den_data[,2:7]
+  den_data<-den_data[,c(sort(names(den_data)))]
+  rownames(den_data) <- levels(as.factor(diadata$hp_c))
+  colnames(den_data) <- levels(as.factor(diadata$age_males))
+  den_data[is.na(den_data)] <- 0
+  
+  asr_ijt<-as.matrix(res/den_data)
+  
+  asr_ijt<-as.data.frame.matrix(asr_ijt)
+  asr_ijt<-merge(as.data.frame.matrix(asr_ijt),as.data.frame.matrix(std_m),by="row.names",all.y=TRUE)
+  
+  asr_ijt<-as.matrix(asr_ijt[2:7])
+  asr_ijt[is.nan(asr_ijt)] <- 0
+  asr_ijt[is.na(asr_ijt)] <- 0
+  
+  
+  # calculate crude and standardized rates for the selected hospital 
+  cr_t<-((sum(num_data)/sum(den_data) ))*100
+  sr_t<-(sum(asr_ijt*pop_ij_c)/totpop_c)*100
+  
+  if (sum(den_data)>0) {
+    sr_t.se<- sqrt((sr_t/100*(1-sr_t/100))/(sum(den_data)))
+    sr_t.ll95  <- sr_t - 1.96 * sr_t.se
+    sr_t.ul95  <- sr_t + 1.96 * sr_t.se
+  } else {
+    sr_t.se    <- NA
+    sr_t.ll95  <- NA
+    sr_t.ul95  <- NA
+  }
+  
+  output<-data.frame(as.numeric(label_target_group),round(cr_t,2),round(sr_t,2),round(sum(den_data),2),round(sr_t.ll95,2),round(sr_t.ul95,2))
+  names(output)<-c("Unit","CR","SR","N","Lower95","Upper95")
+  
+  if (i==1) {sr_output<-output} else {sr_output<-rbind(sr_output,output)}
+  rm(output)
+  
+}
+sr_output19<-sr_output
+save(sr_output19, file = "sr_output19.Rda")
+load("sr_output19.Rda")
+load("sr_output21.Rda")
+
+library(dplyr)
+
+sr_output19$SR<- if_else(sr_output19$SR=="Inf",NA,sr_output19$SR)
+#we used this one for the map
+
+sr_output21$SR<- if_else(sr_output21$SR=="Inf",NA,sr_output21$SR)
+
+
+mean(sr_output19$SR, na.rm  =TRUE)
+mean(sr_output21$SR, na.rm  =TRUE)
+median(sr_output19$SR, na.rm  =TRUE)
+median(sr_output21$SR, na.rm  =TRUE)
+
+sr_output21<-sr_output
+save(sr_output21, file = "sr_output21.Rda")
+load("sr_output21.Rda")
+################################################################
+sr_output2021<-sr_output %>% 
+  mutate(year2021=1)
+
+sr_output1921 <- rbind(sr_output2019,sr_output2021) %>% 
+  mutate(Unit1=ifelse(year2021==1,paste(Unit,"-21"),paste(Unit,"-19"))) %>% 
+  filter(Unit!="16") %>% 
+  mutate(year2021= ifelse(year2021==1,"2021","2019"))
+
+
+
+library(tidyr)
+
+sr_output19$year2021 <- "0"
+sr_output21$year2021 <- "1"
+
+
+sr_output1921<-rbind(sr_output19,sr_output21)
+
+# Plotting
+ggplot(data = sr_output1921, aes(x = year2021, y = SR, fill = year2021)) +
+  geom_violin(trim = FALSE, alpha = 0.8) +  # Violin plot
+  geom_boxplot(width = 0.1, color = "black", alpha = 0.6) +  # Box plot
+  labs(title = "Comparison of los8 Rates between 2019 and 2021",
+       x = "Year",
+       y = " Rate") +
+  theme_minimal() +
+  theme(legend.position = "none")
+
+
+
+ggplot(data = sr_output1921, aes(x = year2021, y = SR)) +
+  geom_point() +
+  labs(title = "Difference in the rates of diabetes patients from 2019 to 2021",
+       x = "year",
+       y = "rate",
+       color = "Year") +
+  theme_minimal()
+
+
+
+# Standardized rates for each hospital
+
+print(sr_output)
+
+#//////////////////////////////////////////////////////////
+#indirect rates
+
+source("methods_lab_functions.R")
+
+#installLibraries(c("Hmisc","gmodels","ggplot2","grid","plyr","gridExtra"))
+
+library(Hmisc)
+library(gmodels)
+require(ggplot2)
+library(gridExtra)
+library(plyr)
+library(grid)
+
+# \\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\
+
+load(file="diadata.Rda")
+load(file="ny_hospdata1921.Rda")
+
+
+
+
+length(unique(diadata$ny_county))
+# \\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\
+# PRESENTATION. Direct Standardization for one Hospital ----
+# adopts AHRQ formulas for the direct standardization
+# see oecd_ahrq_standardized.pdf Page 5 (Header REFERENCE MATERIAL)
+# \\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\
+
+# merge categories with few observations
+diadata<-subset(diadata,diadata$year2021==0) #2019
+diadata<-subset(diadata,diadata$year2021==1)#2021
+
+
+diadata<-subset(diadata,diadata$ny_hosp_id!=141) #Redacted for Confidentiality
+diadata<-subset(diadata,diadata$ny_hosp_id!=21) #county not found Cobleskill Regional Hospital
+diadata<-subset(diadata,!is.na(diadata$males)) #county not found Cobleskill Regional Hospital
+diadata$hp_c<-if_else(diadata$ny_hosp_id==24,"St Lawrence",diadata$Hospital.County)
+
+diadata$recl_age<-ifelse(diadata$cl_age %in% c(1,2,3),3,diadata$cl_age)
+diadata$age_males<-paste(diadata$recl_age,"_",diadata$males)
+
+
+diadata$hp_c<-if_else(diadata$ny_hosp_id==24,"St Lawrence",diadata$Hospital.County)
+length(unique(diadata$hp_c))
+
+
+
+# \\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\
+# Regression Standardization
+
+# \\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\
+
+###############################################
+# Indirect Standardization using the NY Dataset
+###############################################
+load("diadata.RDA")
+
+diadata<-subset(diadata,diadata$year2021==0)
+
+outcome<-c("los8") 
+covariates<-c("recl_age+males+hp_c")
+# insert formula
+DLogit<-glm(formula=paste(outcome,"~",covariates,sep=""),family = binomial("logit"),data=diadata)
+#round(cbind(Beta=coef(DLogit),confint(DLogit),P=coef(summary(DLogit))[,4],exp(cbind(OR=coef(DLogit),confint(DLogit)))),4)
+summary(DLogit)
+# Linear combination of the predictors: p(outcome)
+diadata$p<- predict(DLogit,newdata=diadata,type="response")
+Ybar<-sum(diadata$dead,na.rm=TRUE)/dim(diadata)[1] # POPULATION AVERAGE: divided by the number of observations
+
+# POPULATION AVERAGE YBAR predicted for ALL dataset
+mean(diadata$p) # with missing values
+mean(diadata$p,na.rm=TRUE) # without missing values
+sum(diadata$p,na.rm=TRUE)/dim(diadata)[1] # divided by the number of observations
+sum(diadata$p,na.rm=TRUE)/sum(!is.na(diadata$p))  # divided by the number of observations WITHOUT missing values
+
+hosp_county <- aggregate(hp_c ~ ny_hosp_id, diadata, FUN = function(x) head(x, 1))
+names(hosp_county)<-c("ny_hosp_id","hp_c")
+
+# CRUDE AND INDIRECT STANDARDIZED RATES
+Pij<-aggregate(diadata$p*(1-diadata$p),by=list(diadata$ny_hosp_id),FUN="sum",na.rm=TRUE)
+names(Pij)<-c("ny_hosp_id","Pij")
+
+Oi<-aggregate(diadata$los8,by=list(diadata$ny_hosp_id),FUN="mean",na.rm=TRUE)
+names(Oi)<-c("ny_hosp_id","Oi")
+
+Ni<-aggregate(diadata$los8,by=list(diadata$ny_hosp_id),FUN=NROW)
+names(Ni)<-c("ny_hosp_id","Ni")
+
+Ei<-aggregate(diadata$p,by=list(diadata$ny_hosp_id),FUN="mean",na.rm=TRUE)
+names(Ei)<-c("ny_hosp_id","Ei")
+
+SR_ami<-merge(Pij,Oi,by=c("ny_hosp_id"))
+SR_ami<-merge(SR_ami,Ni,by=c("ny_hosp_id"))
+SR_ami<-merge(SR_ami,Ei,by=c("ny_hosp_id"))
+SR_ami$Ybar<-Ybar
+
+SR_ami$rar     <-SR_ami$Ybar*(SR_ami$Oi/SR_ami$Ei)
+SR_ami$rar.se  <-sqrt( (SR_ami$Ybar/SR_ami$Ei)^2 *((1/SR_ami$Ni)^2 * SR_ami$Pij))
+
+SR_ami$rar.ll95<-SR_ami$rar - 1.96 * SR_ami$rar.se
+SR_ami$rar.ul95<-SR_ami$rar + 1.96 * SR_ami$rar.se
+
+SR_ami$Oi<-round(SR_ami$Oi*100,2)
+SR_ami$Ei<-round(SR_ami$Ei*100,2)
+SR_ami$rar<-round(SR_ami$rar*100,2)
+SR_ami$rar.ll95<-round(SR_ami$rar.ll95*100,2)
+SR_ami$rar.ul95<-round(SR_ami$rar.ul95*100,2)
+
+SR_ami<-merge(SR_ami,hosp_county,by=c("ny_hosp_id"),all.x=TRUE)
+SR_ami$county_new<-ifelse(SR_ami$hp_c %in% c("Kings", "Queens","Manhattan",
+                                             "Suffolk", "Bronx", "Nassau"),2,1)
+
+SR_ami$Ybar<-round(SR_ami$Ybar,2)
+SR_ami$rar.se<-round(SR_ami$rar.se,2)
+SR_ami$Pij<-round(SR_ami$Pij,2)
+
+output<-SR_ami[,c("county_new","ny_hosp_id","hp_c","Ni","Oi","Ei","Ybar","Pij","rar","rar.se","rar.ll95","rar.ul95")]
+names(output)<-c("county_new","Unit","County","N","CR","Ei","Ybar","Sum(p*(1-p))","SR","se(SR)","SR(Lower95)","SR(Upper95)")
+
+print(output)
+library(dplyr)
+
+
+
+###################################################################################################
+#  Funnel Plots using the NY Dataset
+###################################################################################################
+
+#los8
+funnel_plot(title="lenth of stay greater than 8 dyas Rates\n in the State of New York for diabetes pacients, 2019", # Graph Title
+            names=sr_output19$Unit,                     # variable for group names
+            names_outliers=1,                      # differently plot outliers by names (0=No;1=Yes)
+            plot_names=0,                          # plot names instead of dots
+            in_colour=1,                           # colour points within boundaries (0=No;1=Yes)
+            colour_var=sr_output19$county_new,           # variable for colouring groups (numeric)
+            colour_values=c("indianred2","blue"),  # list of colours for all levels of colour_var
+            rate=sr_output1921$SR,                        # value of standardized rates
+            unit=100,                              # denominator of rates
+            population=sr_output19$N,                   # total number of subjects for each rate
+            binary=1,                              # binary variable (0=No;1=Yes)
+            p_mean="weighted",                     # Unweighted, Weighted or specified value
+            filename="",                           # output graph filename 
+            graph="dia_los_col",             # name of graph object
+            pdf_height=1.5,                        # height pdf output
+            pdf_width=3,
+            low=-2,
+            high=10,
+            alpha_1=0.001,
+            alpha_2=0.5,                          # width pdf output
+            ylab="Indicator per 100",              # y axis label
+            xlab="Total N",                        # x axis label
+            selectlab="Year",                    # Label for group legend
+            selectlev=c("Major counties","Other counties"),                  # Values of group legend
+            dot_size=1.5,                          # Scaling factor for dots in the funnel plot
+            dfout="dfout")  
+print(dia_los_col)
+
+
+load(file="indirect19.csv")
+load(file="indirect19_c.csv")
+load(file="indirect21.csv")
+load(file="indirect21_c.csv")
+
+
+
+in_output1921 <-rbind(output19_c,output21_c)
+
+sr_output1921$year<-if_else(sr_output1921$Year2021==1,"2021","2019")
+
+boxplot(SR ~ year, data = sr_output1921, col = c("indianred2", "blue"),
+        xlab = "Year", ylab = "Los8 rates", main = "Length of stay greater than 8 days Rates\n in the State of New York, 2019-21")
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+library(tableone)
+tableOne1_1 <- CreateTableOne(vars = "SR", strata = "Year2021", data = sr_output1921, test=T)
+
+print(tableOne1_1, nonnormal= "SR", test=T, showAllLevels=T)
+#level 0                 1                 p      test 
+#SR (median [IQR])       0.46 [0.05, 1.26] 0.59 [0.06, 1.41]  0.391 nonnorm
+
+tableOne1_1<- as.data.frame(print(tableOne1_1, nonnormal= num, test=T, showAllLevels=T)) %>%
+  filter(as.numeric(p)<=0.05) %>% 
+  select(-level)
+
+
+
+
+#to export for map data
+hosp_county <- aggregate(hp_c ~ ny_hosp_id, diadata, FUN = function(x) head(x, 1))
+names(hosp_county)<-c("ny_hosp_id","hp_c")
+
+
+library(dplyr)
+rates_c<-merge(sr_output19,hosp_county,by.x="Unit",by.y = "ny_hosp_id")
+
+rates_c19<- rates_c %>% 
+  mutate(SR=if_else(SR=="Inf",NA,SR),
+         county= as.character(rates_c$hp_c)) %>% 
+  group_by(county) %>% 
+  summarise(m_CR=mean(CR),m_SR=mean(SR,na.rm = T),s_N=sum(N))
+write.csv(rates_c19,file="rates_c19.csv")
